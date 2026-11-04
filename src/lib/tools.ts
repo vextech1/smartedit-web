@@ -139,7 +139,17 @@ export const tools: Tool[] = [
     title: 'Colour picker and palette from a photo', short: 'Get HEX, RGB and HSL from any photo.',
     h1: 'Pick colours from a photo', intro: 'Tap any spot on a photo to read its colour as HEX, RGB and HSL, and see the six main colours of the picture.',
     steps: ['Choose a photo.', 'Tap or drag on it to pick a colour.', 'Copy the value, or keep colours to build a palette.'],
-    note: 'Colours are read from the picture as shown on your screen.' }
+    note: 'Colours are read from the picture as shown on your screen.' },
+  { slug: 'watermark-image', category: 'Image', tile: 'Watermark Photos', kind: 'image', mode: 'watermark-image', group: 'Images',
+    title: 'Add a watermark to photos', short: 'Put text or a logo on many photos.',
+    h1: 'Add a watermark to photos', intro: 'Put your name, a copyright line or a logo on one photo or a whole batch. Choose the corner or repeat it across the picture, then set the size and how see-through it is.',
+    steps: ['Choose your photos.', 'Type your text or choose a logo, then pick a position.', 'Add the watermark and download the photos, or all of them as a ZIP.'],
+    note: 'A watermark is drawn into the picture. Someone determined can still crop or edit it out.' },
+  { slug: 'rotate-images', category: 'Image', tile: 'Rotate & Flip', kind: 'image', mode: 'rotate', group: 'Images',
+    title: 'Rotate and flip many photos at once', short: 'Turn or flip a whole batch.',
+    h1: 'Rotate or flip photos', intro: 'Turn photos a quarter turn or upside down, or flip them, all in one go. See the first photo as a preview, then download them all as a ZIP.',
+    steps: ['Choose your photos.', 'Turn or flip until the preview looks right.', 'Download the photos, or all of them as a ZIP.'],
+    note: 'Every photo gets the same change.' }
 ];
 
 export const toolBySlug = (slug: string) => tools.find((t) => t.slug === slug);

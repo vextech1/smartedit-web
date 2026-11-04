@@ -24,6 +24,8 @@
   import RedactImage from '#lib/components/RedactImage.svelte';
   import AnnotateImage from '#lib/components/AnnotateImage.svelte';
   import ColorPicker from '#lib/components/ColorPicker.svelte';
+  import WatermarkImage from '#lib/components/WatermarkImage.svelte';
+  import RotateImages from '#lib/components/RotateImages.svelte';
   let { data } = $props();
   const t = $derived(data.tool);
   const related = $derived(tools.filter((x) => x.slug !== t.slug && x.group === t.group));
@@ -50,6 +52,8 @@
   {:else if t.mode === 'redact'}<RedactImage />
   {:else if t.mode === 'annotate'}<AnnotateImage />
   {:else if t.mode === 'colors'}<ColorPicker />
+  {:else if t.mode === 'watermark-image'}<WatermarkImage />
+  {:else if t.mode === 'rotate'}<RotateImages />
   {:else if t.kind === 'image'}<ImageTool mode={t.mode as 'compress' | 'convert'} />
   {:else if t.mode === 'organize-pdf'}<PageEditor />
   {:else if t.mode === 'split-pdf'}<SplitTool />

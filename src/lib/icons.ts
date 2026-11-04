@@ -24,6 +24,8 @@ export const ICONS: Record<string, string> = {
   'round-image': 'M8 3h8a5 5 0 015 5v8a5 5 0 01-5 5H8a5 5 0 01-5-5V8a5 5 0 015-5zM9 14l2-2 2 2 2-3',
   'redact-image': 'M3 6h18v12H3zM6 10h6M6 14h10',
   'annotate-image': 'M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3',
+  'watermark-image': 'M4 5h16v14H4zM8 15l4-6 4 6M9.5 13h5',
+  'rotate-images': 'M21 12a9 9 0 11-3-6.7M21 4v5h-5',
   'color-picker': 'M12 3a9 9 0 100 18 2 2 0 002-2c0-1-1-1.5-1-2.5s1-1.5 2-1.5h2a3 3 0 003-3c0-5-4-9-8-9zM8 11h.01M12 8h.01M16 11h.01'
 };
 export const CATEGORY_COLOR: Record<string, string> = { PDF: '#ff6b6b', Image: '#8f86ff', Document: '#4cc9f0' };
