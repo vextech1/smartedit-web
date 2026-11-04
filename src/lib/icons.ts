@@ -19,7 +19,12 @@ export const ICONS: Record<string, string> = {
   'extract-text': 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
   'edit-image': 'M7 3v14h14M3 7h14v14',
   'resize-image': 'M4 14v6h6M20 10V4h-6M4 20l7-7M20 4l-7 7',
-  'photo-frames': 'M3 4h18v16H3zM7 8h10v8H7zM9 14l2-2 2 2 2-3 2 3'
+  'photo-frames': 'M3 4h18v16H3zM7 8h10v8H7zM9 14l2-2 2 2 2-3 2 3',
+  'collage-images': 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
+  'round-image': 'M8 3h8a5 5 0 015 5v8a5 5 0 01-5 5H8a5 5 0 01-5-5V8a5 5 0 015-5zM9 14l2-2 2 2 2-3',
+  'redact-image': 'M3 6h18v12H3zM6 10h6M6 14h10',
+  'annotate-image': 'M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3',
+  'color-picker': 'M12 3a9 9 0 100 18 2 2 0 002-2c0-1-1-1.5-1-2.5s1-1.5 2-1.5h2a3 3 0 003-3c0-5-4-9-8-9zM8 11h.01M12 8h.01M16 11h.01'
 };
 export const CATEGORY_COLOR: Record<string, string> = { PDF: '#ff6b6b', Image: '#8f86ff', Document: '#4cc9f0' };
 export const FILE_ICON = { pdf: ICONS['organize-pdf'], image: ICONS['pdf-to-images'], text: ICONS['extract-text'], other: ICONS['organize-pdf'] } as const;

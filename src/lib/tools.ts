@@ -114,7 +114,32 @@ export const tools: Tool[] = [
     title: 'Photo frames (wall and phone)', short: 'Wall frames and phone frames.',
     h1: 'Add a frame to a photo', intro: 'Put a photo in a wall frame with a mat, or show a screenshot inside a phone. Pick the style, then download.',
     steps: ['Choose a photo.', 'Pick Wall frames or Phone frames, then a style.', 'Download as PNG, JPG or WebP.'],
-    note: 'Choose PNG to keep a transparent background.' }
+    note: 'Choose PNG to keep a transparent background.' },
+  { slug: 'collage-images', category: 'Image', tile: 'Photo Collage', kind: 'image', mode: 'collage', group: 'Images',
+    title: 'Photo collage maker', short: 'Combine photos into one picture.',
+    h1: 'Make a photo collage', intro: 'Put several photos into one picture as a grid, side by side or stacked. Reorder them, set the spacing and colour, then download.',
+    steps: ['Choose your photos.', 'Pick a layout and put the photos in order.', 'Download as JPG, PNG or WebP.'],
+    note: 'Up to 12 photos at a time. Everything stays on your device.' },
+  { slug: 'round-image', category: 'Image', tile: 'Round Corners', kind: 'image', mode: 'round', group: 'Images',
+    title: 'Round corners and circle crop', short: 'Circle crops and rounded corners.',
+    h1: 'Round the corners or crop to a circle', intro: 'Crop a photo to a circle or a rounded shape for profile pictures and icons. Choose a shape, move the photo inside it, and download.',
+    steps: ['Choose a photo.', 'Pick Circle, Rounded square or a shape and set the roundness.', 'Download as PNG to keep the corners clear.'],
+    note: 'Save as PNG to keep see-through corners. JPG fills them with a colour.' },
+  { slug: 'redact-image', category: 'Image', tile: 'Blur or Hide', kind: 'image', mode: 'redact', group: 'Images',
+    title: 'Blur or hide parts of a photo', short: 'Hide faces, plates and private details.',
+    h1: 'Hide parts of a photo', intro: 'Draw a box over faces, number plates, addresses or anything private, and cover it with a black box, pixelation or blur.',
+    steps: ['Choose a photo.', 'Pick how to hide, then drag boxes over what to cover.', 'Download and check the saved picture.'],
+    note: 'A black box or strong pixelation is safest. A light blur can sometimes be reversed.' },
+  { slug: 'annotate-image', category: 'Image', tile: 'Draw & Text', kind: 'image', mode: 'annotate', group: 'Images',
+    title: 'Add text and draw on a photo', short: 'Text, arrows, boxes and drawing.',
+    h1: 'Add text and drawings to a photo', intro: 'Write on a photo, point with arrows, draw boxes and ovals, or sketch freehand. Pick colours and sizes, then download.',
+    steps: ['Choose a photo.', 'Pick a tool and a colour, then draw or tap to add text.', 'Download as JPG, PNG or WebP.'],
+    note: 'Use Undo to remove the last mark.' },
+  { slug: 'color-picker', category: 'Image', tile: 'Colour Picker', kind: 'image', mode: 'colors', group: 'Images',
+    title: 'Colour picker and palette from a photo', short: 'Get HEX, RGB and HSL from any photo.',
+    h1: 'Pick colours from a photo', intro: 'Tap any spot on a photo to read its colour as HEX, RGB and HSL, and see the six main colours of the picture.',
+    steps: ['Choose a photo.', 'Tap or drag on it to pick a colour.', 'Copy the value, or keep colours to build a palette.'],
+    note: 'Colours are read from the picture as shown on your screen.' }
 ];
 
 export const toolBySlug = (slug: string) => tools.find((t) => t.slug === slug);
