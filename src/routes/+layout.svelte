@@ -36,7 +36,7 @@
       <a {href} aria-current={isCurrent(href) ? 'page' : undefined}>{label}</a>
     {/each}
   </nav>
-  <a class="gear" href="/settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={links[3][2]} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></a>
+
 </div></header>
 <main id="main" tabindex="-1"><div class="wrap">{@render children()}</div></main>
 <footer class="site"><div class="wrap">
