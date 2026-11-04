@@ -43,3 +43,15 @@ export async function splitPdf(bytes: Uint8Array, groups: number[][]): Promise<U
 }
 
 export const everyPage = (total: number): number[][] => Array.from({ length: total }, (_, i) => [i]);
+
+/**
+ * Page order for a double-sided stack scanned in two passes. The first pass gives the fronts (1..N). After flipping the
+ * stack, the second pass gives the backs either in reverse (the usual case, N..1) or in order (1..N). Returns the 0-based
+ * source index for each output position, or null if the page count is odd (so it can't be two equal passes).
+ */
+export function doubleSidedOrder(total: number, backsReversed: boolean): number[] | null {
+  if (total < 2 || total % 2) return null;
+  const n = total / 2, order: number[] = [];
+  for (let j = 0; j < n; j++) order.push(j, backsReversed ? total - 1 - j : n + j);
+  return order;
+}

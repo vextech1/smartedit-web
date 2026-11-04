@@ -3,7 +3,7 @@
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
   import { toBlob } from '#lib/core/image.ts';
-  import { buildFromPages } from '#lib/core/pdf-edit.ts';
+  import { buildFromPages, doubleSidedOrder } from '#lib/core/pdf-edit.ts';
   import { closePdf, openPdf, renderPage } from '#lib/core/pdf-render.ts';
   import { pdfBlob, pdfErrorMessage, readBytes } from '#lib/core/files.ts';
 
@@ -40,6 +40,14 @@
   const remove = (i: number) => { const [p] = pages.splice(i, 1); if (p.thumb) URL.revokeObjectURL(p.thumb); };
   const selected = $derived(pages.filter((p) => p.sel));
 
+  function reverseAll() { clearResult(); pages = pages.slice().reverse(); bad = false; status = 'Page order reversed.'; }
+  function rotateAll(d: number) { clearResult(); pages.forEach((p) => { p.rotate = (p.rotate + d + 360) % 360; }); bad = false; status = ''; }
+  function fixDoubleSided(backsReversed: boolean) {
+    const order = doubleSidedOrder(pages.length, backsReversed);
+    if (!order) { bad = true; status = `This needs an even number of pages (the fronts, then the backs). This PDF has ${pages.length}.`; return; }
+    clearResult(); pages = order.map((i) => pages[i]); bad = false; status = 'Fronts and backs interleaved. Check the pages, then save.';
+  }
+
   async function save(only: P[], suffix: string) {
     clearResult(); busy = true; bad = false; status = 'Saving…';
     try {
@@ -57,6 +65,19 @@
 
 {#if pages.length}
   <p class="muted">{pages.length} {pages.length === 1 ? 'page' : 'pages'}{selected.length ? `, ${selected.length} selected` : ''}. Rotate, reorder or remove pages, then save.</p>
+  <div class="bar" style="margin:4px 0 10px">
+    <button class="btn small ghost" type="button" onclick={reverseAll}>Reverse order</button>
+    <button class="btn small ghost" type="button" onclick={() => rotateAll(-90)}>Rotate all ↺</button>
+    <button class="btn small ghost" type="button" onclick={() => rotateAll(90)}>Rotate all ↻</button>
+  </div>
+  <details style="margin:0 0 12px">
+    <summary>Scanned both sides of a stack in two passes?</summary>
+    <p class="muted">Scan the fronts, flip the stack, scan the backs. Choose how the backs came out and the pages are put back in order.</p>
+    <div class="bar">
+      <button class="btn small ghost" type="button" onclick={() => fixDoubleSided(true)}>Backs came out last page first</button>
+      <button class="btn small ghost" type="button" onclick={() => fixDoubleSided(false)}>Backs came out in order</button>
+    </div>
+  </details>
   <ul class="pages">
     {#each pages as p, i (p.index)}
       <li class="pg" class:sel={p.sel}>

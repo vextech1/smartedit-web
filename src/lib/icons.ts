@@ -9,8 +9,17 @@ export const ICONS: Record<string, string> = {
   'split-pdf': 'M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6',
   'pdf-to-images': 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9.5a1 1 0 1 0 0 .01',
   'compress-pdf': 'M12 4v10M8 10l4 4 4-4M5 19h14',
+  'pdf-to-docx': 'M6 3h8l5 5v13H6zM14 3v5h5M8.5 12.5l1.5 5 2-4.5 2 4.5 1.5-5',
+  'extract-images': 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9a1.2 1.2 0 1 0 .01 0',
+  'watermark-pdf': 'M6 3h8l5 5v13H6zM14 3v5h5M8 18l8-7M8 13l5-4',
+  'page-numbers': 'M6 3h8l5 5v13H6zM14 3v5h5M9 17h6M11 12l1-2v6',
+  'crop-pdf': 'M7 3v14h14M3 7h14v14',
+  'pdf-metadata': 'M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h4',
+  'pdf-to-text': 'M6 3h8l5 5v13H6zM14 3v5h5M9 12h6M9 15h6M9 18h3',
   'extract-text': 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
-  'edit-image': 'M7 3v14h14M3 7h14v14'
+  'edit-image': 'M7 3v14h14M3 7h14v14',
+  'resize-image': 'M4 14v6h6M20 10V4h-6M4 20l7-7M20 4l-7 7',
+  'photo-frames': 'M3 4h18v16H3zM7 8h10v8H7zM9 14l2-2 2 2 2-3 2 3'
 };
 export const CATEGORY_COLOR: Record<string, string> = { PDF: '#ff6b6b', Image: '#8f86ff', Document: '#4cc9f0' };
 export const FILE_ICON = { pdf: ICONS['organize-pdf'], image: ICONS['pdf-to-images'], text: ICONS['extract-text'], other: ICONS['organize-pdf'] } as const;

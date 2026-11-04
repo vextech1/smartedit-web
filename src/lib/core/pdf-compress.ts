@@ -43,3 +43,11 @@ export function savingsLabel(before: number, after: number): 'optimized' | 'bare
   if (after >= before) return 'optimized';          // not smaller: keep the original
   return (before - after) / before < 0.02 ? 'barely' : 'smaller';
 }
+
+/** Turn RGBA pixels gray in place, using the standard luma weights (ITU-R BT.601). Alpha is left alone. */
+export function toGrayscale(px: Uint8ClampedArray | Uint8Array): void {
+  for (let i = 0; i + 3 < px.length; i += 4) {
+    const y = Math.round(px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114);
+    px[i] = px[i + 1] = px[i + 2] = y;
+  }
+}
