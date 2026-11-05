@@ -154,3 +154,21 @@ nav.bottom { display: none; }
 .setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--card); border: 1px solid var(--line); }
 .setrow select { font: inherit; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); max-width: 55%; }
 .danger { color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); background: transparent; }
+
+/* Studios: working-file header, tool tabs, version list, studio cards */
+.studiohead { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; margin: 0 0 12px; }
+.studiohead .who { overflow-wrap: anywhere; }
+.studiohead .sub, .vers .sub { font-size: .85rem; color: var(--muted); font-weight: 400; }
+.studiohead .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.vers { margin-top: 8px; } .vers summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
+.vers ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 40vh; overflow: auto; }
+.vers li button { width: 100%; text-align: left; font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.vers li button[aria-current="true"] { border-color: var(--accent); font-weight: 650; }
+.studiotabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 8px; scrollbar-width: none; }
+.studiotabs button { flex: none; font: inherit; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
+.studiotabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
+.studiotabs button:disabled { opacity: .4; cursor: not-allowed; }
+[role="tabpanel"][hidden] { display: none; }
+.wscards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.studiolink { margin: 0 0 16px; }
+.start .drop { margin-top: 4px; }

@@ -107,7 +107,7 @@
   {/if}
 </div>
 {#if kind === 'logo'}
-  <FileDrop accept="image/*" multiple={false} label={logo ? 'Choose a different logo' : 'Choose your logo'} hint="A PNG with a see-through background works best." onfiles={pickLogo} />
+  <FileDrop fromSession={false} accept="image/*" multiple={false} label={logo ? 'Choose a different logo' : 'Choose your logo'} hint="A PNG with a see-through background works best." onfiles={pickLogo} />
   {#if logoName}<p class="muted">Logo: {logoName}</p>{/if}
 {/if}
 

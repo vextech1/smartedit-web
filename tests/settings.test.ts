@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getTheme, setTheme, applyTheme, getOcrLang, setOcrLang, clearPrefs } from '../src/lib/core/settings';
+import { getTheme, setTheme, applyTheme, getOcrLang, setOcrLang, clearPrefs, getRetentionDays, setRetentionDays } from '../src/lib/core/settings';
 import { Library, MemoryStore } from '../src/lib/core/library';
 
 function fake(init: Record<string, string> = {}) {
@@ -7,6 +7,16 @@ function fake(init: Record<string, string> = {}) {
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k),
     get length() { return m.size; }, key: (i: number) => [...m.keys()][i] ?? null, _m: m } as unknown as Storage & { _m: Map<string, string> };
 }
+describe('retention setting', () => {
+  it('defaults to 7 days and accepts only the offered choices', () => {
+    expect(getRetentionDays(fake())).toBe(7);
+    const s = fake(); setRetentionDays(30, s); expect(getRetentionDays(s)).toBe(30);
+    setRetentionDays(0, s); expect(getRetentionDays(s)).toBe(0);   // 0 = until I delete
+    setRetentionDays(5, s); expect(getRetentionDays(s)).toBe(7);
+    expect(getRetentionDays(fake({ 'smartedit.retentionDays': 'abc' }))).toBe(7);
+  });
+  it('is forgotten by clearPrefs', () => { const s = fake(); setRetentionDays(30, s); clearPrefs(s); expect(getRetentionDays(s)).toBe(7); });
+});
 describe('settings', () => {
   it('defaults to the system theme and ignores junk', () => {
     expect(getTheme(fake())).toBe('system');

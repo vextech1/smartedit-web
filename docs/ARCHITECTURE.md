@@ -11,8 +11,9 @@ Config lives in `vite.config.ts` (this SvelteKit version has no `svelte.config.j
 - `src/lib/site.ts`: name, canonical origin (set when the custom domain is bought), URL helper.
 - `src/lib/tools.ts`: tool registry. One entry adds a page, nav/home card and sitemap URL.
 - `src/lib/core/`: framework-free logic (format, image, pdf). Unit-tested in Node (`tests/`).
-- `src/lib/components/`: `FileDrop`, `ImageTool`, `PdfTool`.
-- `src/routes/`: pages, including legal and FAQ pages.
+- `src/lib/core/workspaces.ts`, `core/session.ts`, `src/lib/workspace.svelte.ts`: studios and work sessions (see `docs/WORKSPACE_PLAN.md`).
+- `src/lib/components/`: `FileDrop`, `ImageTool`, `PdfTool`, `Studio`, `ToolView`, `NextButton`.
+- `src/routes/`: pages, including legal and FAQ pages. `/studio/<id>` hosts a studio; `/tools/<slug>` stays as each tool's own landing page.
 
 The older plain-HTML site is archived in `legacy-site/`; its PDF compatibility suite is in `legacy-tests/` and runs with `npm run test:legacy`. The archive is intentionally outside `static/` and is not included in production builds.
 
@@ -53,4 +54,13 @@ Open decision: password-protected PDFs (MuPDF WASM is AGPL; qpdf-wasm is an alte
    - *Watermark Photos* (`watermark-image`): `core/watermark.ts` (`markSize` is a % of the photo's width, capped to 90 % of its height; `placeMark` for the nine positions with an edge margin; `tilePoints` for a repeat pattern with every other row shifted). The mark is built once as its own transparent canvas (text with an optional contrast outline, or an uploaded logo), then scaled, turned and drawn at the chosen opacity; the repeat pattern is tiled on a square of side hypot(W, H) rotated about the centre so any angle still covers the photo. A separate tool from the PDF watermark (`watermark-pdf`).
    - *Rotate & Flip* (`rotate-images`): `core/batch.ts` (`orient` returns the new size and one affine matrix for `ctx.setTransform`: flip in the photo's own frame, then turn clockwise; tested at every corner for all 16 combinations).
    - Both save each photo in its own format when the browser can write it (`outType`), otherwise JPG; results show in the shared `components/BatchResults.svelte` with one ZIP. Photos are capped at 8000 px (watermark) or 10000 px (rotate). Tests: `tests/batch.test.ts`.
+7. **Workspaces (studios) and work sessions** (plan and status: `docs/WORKSPACE_PLAN.md`)
+   - Four studios (PDF Studio, Photo Studio, Convert & Extract, Scan & Documents) group all 27 tools as tabs; `core/workspaces.ts` is the registry (a test checks every tool is in exactly one). `Studio.svelte` keeps opened tabs alive while the working file is unchanged and reloads a tab whose input is out of date.
+   - `core/session.ts`: a session is a chain of versions of one file (Original plus the latest 9), with undo/redo, identical-result de-duplication, quota recovery (compact to Original + head, retry once), expiry by days since last use (Settings: 1, 7, 30 or never; pinned work stays) and an IndexedDB store (`smartedit-sessions`) kept apart from My Files. Tested in Node against a memory store and against the real store through `fake-indexeddb`.
+   - Tools plug in without rewrites: `FileDrop` takes the studio's working file on mount (secondary pickers pass `fromSession={false}`); `SaveButton` adds a **Next...** button (`NextButton.svelte`) that keeps a result as a new version or sends it to another studio. Without browser storage the studio falls back to memory only, with no undo.
+   - Home routing (`routeFor`) and Tools tiles open studio tabs. Not done yet: per-tool unsaved-edit tracking and leave-guard, session export, Android port.
+8. **Photo editor shell** (plan and status: `docs/EDITOR_PLAN.md`)
+   - With a photo open, Photo Studio renders `editor/PhotoEditor.svelte` full screen instead of the tab bar: centred stage, bottom dock, bottom sheets (`ToolSheet`, `SliderRow`, `ParamTabs`), crop handles on the photo (`CropOverlay`). The stage measures its free space and re-fits the photo when a sheet opens.
+   - Applying a tool renders at full size and commits a version to the studio session, so undo, redo, Versions, Save to My files and retention all keep working. Other photo tools open in a *Tools* panel on the same photo.
+   - Editor class names are prefixed (`pframe`, `pview`...) because `app.css` has global `.frame`, `.view`, `.menu`, `.tile` and `.chips` rules that would otherwise leak in.
 

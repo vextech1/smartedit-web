@@ -85,7 +85,7 @@
     {/if}
   </div>
   {#if kind === 'image'}
-    <FileDrop accept="image/*" multiple={false} label={imgFile ? 'Choose a different picture' : 'Choose a picture'} hint="PNG with a clear background works best." onfiles={(f) => (imgFile = f[0])} />
+    <FileDrop fromSession={false} accept="image/*" multiple={false} label={imgFile ? 'Choose a different picture' : 'Choose a picture'} hint="PNG with a clear background works best." onfiles={(f) => (imgFile = f[0])} />
     {#if imgFile}<p class="muted">{imgFile.name}</p>{/if}
   {/if}
   <div class="controls">

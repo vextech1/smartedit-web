@@ -8,6 +8,7 @@
   import { getLibrary, kindOf, type LibFile } from '#lib/core/library.ts';
   import { routeFor, setPending, ago } from '#lib/core/handoff.ts';
   import ToolTile from '#lib/components/ToolTile.svelte';
+  import { toolHref } from '#lib/core/workspaces.ts';
 
   const popular = [['organize-pdf', 'Edit PDF', 'PDF'], ['edit-image', 'Edit Image', 'Image'], ['scan-document', 'Scan Document', 'Document'], ['images-to-pdf', 'Create PDF', 'PDF']] as const;
   const KEY = 'smartedit.recentClearedAt';
@@ -47,7 +48,7 @@
 
 <div class="sec"><h2>Popular Tools</h2><a href="/tools">See all →</a></div>
 <div class="tiles two">
-  {#each popular as [slug, label, cat]}<ToolTile href="/tools/{slug === 'organize-pdf' ? 'organize-pdf' : slug}" icon={slug} {label} color={CATEGORY_COLOR[cat]} />{/each}
+  {#each popular as [slug, label, cat]}<ToolTile href={toolHref(slug)} icon={slug} {label} color={CATEGORY_COLOR[cat]} />{/each}
 </div>
 
 {#if recent.length}
