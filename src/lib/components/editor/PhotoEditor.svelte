@@ -26,6 +26,7 @@
   import ExportSheet from './sheets/ExportSheet.svelte';
   import type { Dims, SaveOpts } from './sheet-types.ts';
   import { PANEL_TOOLS, TAB_SHEET, SHEETS } from '#lib/core/photo-ops.ts';
+  import { clampStage, panBy as panStage, pinchTo, pointDistance, pointMidpoint, zoomAt, type StagePoint, type StageTransform } from '#lib/core/stage-gesture.ts';
 
   // The working photo lives in the studio; every applied change becomes a new version there (so undo and redo are the studio's).
   let { onclose, onremove, oncopy, onreplace, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; onreplace: (file: File) => void | Promise<void>; saved: 'idle' | 'ok' | 'failed' } = $props();
@@ -67,8 +68,12 @@
   let menu = $state(false); let versions = $state(false); let listOpen = $state(false);
   let stageW = $state(0); let stageH = $state(0);
   let dl = $state('');
+  let zoom = $state<StageTransform>({ scale: 1, x: 0, y: 0 });
   let replaceInput: HTMLInputElement;
   let token = 0;
+  const pointers = new Map<number, StagePoint>();
+  let pinchStart: { view: StageTransform; distance: number; midpoint: StagePoint } | null = null;
+  let panStart: { id: number; point: StagePoint; view: StageTransform } | null = null;
 
   const ratio = $derived(aspectRatio(ratioId, W, H));
   const cur = $derived(PARAMS.find((p) => p.id === param)!);
@@ -82,6 +87,7 @@
   const panelSlug = $derived(st.tab && st.tab !== HOME && !(st.tab in TAB_SHEET) && workspaceById('photo')?.tabs.includes(st.tab) ? st.tab : null);
   const panelTool = $derived(panelSlug ? toolBySlug(panelSlug) : undefined);
   const photoTools = $derived(PANEL_TOOLS.map((s) => toolBySlug(s)!).filter(Boolean));
+  const zoomLabel = $derived(`${Math.round(zoom.scale * 100)}%`);
 
   const copy = (c: HTMLCanvasElement) => { const n = document.createElement('canvas'); n.width = c.width; n.height = c.height; n.getContext('2d')!.drawImage(c, 0, 0); return n; };
 
@@ -95,6 +101,7 @@
       small.width = Math.max(1, Math.round(c.width * p)); small.height = Math.max(1, Math.round(c.height * p)); small.getContext('2d')!.drawImage(c, 0, 0, small.width, small.height);
       const old = base; if (prev) prev.width = 0; prev = small; base = c; W = c.width; H = c.height; if (old) old.width = 0;
       tool = null; outDims = null; adj = { ...NO_ADJUST }; crop = null; msg = afterMsg; afterMsg = ''; rev++;
+      zoom = { scale: 1, x: 0, y: 0 };
     } catch { if (mine === token) msg = 'That file could not be read as an image.'; }
   }
   // Load (or reload) whenever the working file changes: first open, after applying, undo and redo.
@@ -178,6 +185,45 @@
   function closeLayers() { if (menu) menu = false; else if (versions) versions = false; else if (panelSlug) leaveTool(); else if (listOpen) listOpen = false; else if (tool) cancelTool(); }
   function leaveTool() { st.tab = HOME; listOpen = true; }
   const menuDo = (f: () => void) => { menu = false; f(); };
+  function boundedZoom(next: StageTransform) {
+    zoom = clampStage(next, { x: disp.w, y: disp.h }, { x: stageW, y: stageH });
+  }
+  function stagePoint(e: PointerEvent): StagePoint {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
+  }
+  function stageDown(e: PointerEvent) {
+    if (tool || panelSlug || listOpen || (e.target instanceof Element && e.target.closest('button'))) return;
+    const stage = e.currentTarget as HTMLElement, point = stagePoint(e);
+    pointers.set(e.pointerId, point);
+    try { stage.setPointerCapture(e.pointerId); } catch { /* pointer may have ended */ }
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchStart = { view: { ...zoom }, distance: pointDistance(a, b), midpoint: pointMidpoint(a, b) };
+      panStart = null;
+    } else if (zoom.scale > 1) panStart = { id: e.pointerId, point, view: { ...zoom } };
+  }
+  function stageMove(e: PointerEvent) {
+    if (!pointers.has(e.pointerId)) return;
+    const point = stagePoint(e); pointers.set(e.pointerId, point);
+    if (pinchStart && pointers.size > 1) {
+      const [a, b] = [...pointers.values()];
+      boundedZoom(pinchTo(pinchStart.view, pinchStart.distance, pointDistance(a, b), pinchStart.midpoint, pointMidpoint(a, b)));
+    } else if (panStart?.id === e.pointerId) boundedZoom(panStage(panStart.view, point.x - panStart.point.x, point.y - panStart.point.y));
+  }
+  function stageUp(e: PointerEvent) {
+    pointers.delete(e.pointerId); pinchStart = null; panStart = null;
+    if (pointers.size === 1) {
+      const [id, point] = [...pointers.entries()][0];
+      if (zoom.scale > 1) panStart = { id, point, view: { ...zoom } };
+    }
+  }
+  function zoomBy(factor: number) { boundedZoom(zoomAt(zoom, zoom.scale * factor, { x: 0, y: 0 })); }
+  function resetZoom() { zoom = { scale: 1, x: 0, y: 0 }; }
+  $effect(() => {
+    const next = clampStage(zoom, { x: disp.w, y: disp.h }, { x: stageW, y: stageH });
+    if (next.scale !== zoom.scale || next.x !== zoom.x || next.y !== zoom.y) zoom = next;
+  });
   function chooseReplacement() { menu = false; replaceInput.click(); }
   function replacePicked() {
     const file = replaceInput.files?.[0];
@@ -210,13 +256,19 @@
   {/if}
 
   <div class="main">
-    <div class="stage" bind:clientWidth={stageW} bind:clientHeight={stageH}>
+    <div class="stage" role="region" aria-label="Photo canvas. Pinch to zoom and drag to pan." bind:clientWidth={stageW} bind:clientHeight={stageH} onpointerdown={stageDown} onpointermove={stageMove} onpointerup={stageUp} onpointercancel={stageUp}>
       {#if disp.w}
-        <div class="pframe" style="width:{disp.w}px;height:{disp.h}px">
+        <div class="pframe" style="width:{disp.w}px;height:{disp.h}px;transform:translate3d({zoom.x}px,{zoom.y}px,0) scale({zoom.scale})">
           <canvas bind:this={view} class="pview" aria-label="Photo preview"></canvas>
           {#if tool === 'crop' && crop}<CropOverlay bind:rect={crop} {W} {H} {ratio} />{/if}
         </div>
       {/if}
+      <div class="zoom-controls" role="group" aria-label="Photo zoom">
+        <button type="button" aria-label="Zoom out" disabled={zoom.scale <= 1} onclick={() => zoomBy(0.8)}>−</button>
+        <output aria-live="polite">{zoomLabel}</output>
+        <button type="button" aria-label="Zoom in" disabled={zoom.scale >= 6} onclick={() => zoomBy(1.25)}>+</button>
+        <button type="button" aria-label="Reset zoom" onclick={resetZoom}>Reset</button>
+      </div>
       {#if msg}<p class="toast" role="status">{msg}</p>{/if}
       {#if st.note}<p class="toast" role="status">{st.note}</p>{/if}
     </div>
@@ -299,9 +351,13 @@
   .pmenu button { text-align: left; font: inherit; padding: 12px 14px; border: 0; background: none; color: var(--ink); border-radius: 10px; cursor: pointer; }
   .pmenu button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   .main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-  .pframe { position: relative; line-height: 0; }
+  .stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; transition: flex-basis 220ms ease; }
+  .pframe { position: relative; line-height: 0; transform-origin: center; transition: width 220ms ease, height 220ms ease, transform 180ms ease-out; will-change: transform; }
   .pview { display: block; width: 100%; height: 100%; border-radius: 2px; box-shadow: 0 2px 16px rgb(0 0 0 / .25); }
+  .zoom-controls { position: absolute; z-index: 3; right: 12px; top: 12px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 2px 10px rgb(0 0 0 / .16); }
+  .zoom-controls button { min-width: 44px; min-height: 44px; border: 0; border-radius: 7px; color: var(--ink); background: transparent; font: inherit; cursor: pointer; }
+  .zoom-controls button:disabled { opacity: .4; }
+  .zoom-controls output { min-width: 48px; text-align: center; font-size: .85rem; }
   .toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); margin: 0; max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: .92rem; line-height: 1.35; }
   .pchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 14px; }
   .pchips button { flex: none; font: inherit; font-size: 1rem; padding: 10px 18px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
@@ -318,6 +374,7 @@
   .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .ptile { display: grid; gap: 4px; text-align: left; padding: 14px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
   .ptile span { color: var(--muted); font-size: .88rem; }
+  @media (prefers-reduced-motion: reduce) { .stage, .pframe { transition-duration: .01ms; } }
   @media (min-width: 860px) {
     .main { flex-direction: row; }
     .stage { min-width: 0; }

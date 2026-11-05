@@ -12,6 +12,7 @@
   import { compressPdfImages, PRESETS, type PresetKey } from '#lib/core/pdf-compress.ts';
   import { jpegRecompressor, toBlob } from '#lib/core/image.ts';
   import { initialPages, movePage, pageIndex, removePage, rotatePage } from '#lib/core/pdf-studio.ts';
+  import { clampStage, panBy as panStage, pinchTo, pointDistance, pointMidpoint, zoomAt, type StagePoint, type StageTransform } from '#lib/core/stage-gesture.ts';
   import Icon from './Icon.svelte';
   import Dock from './Dock.svelte';
   import ToolSheet from './ToolSheet.svelte';
@@ -27,6 +28,7 @@
   const EMPTY_META: PdfMeta = { title: '', author: '', subject: '', keywords: '', creator: '', producer: '' };
 
   let canvas = $state<HTMLCanvasElement>();
+  let pageW = $state(0); let pageH = $state(0);
   let source = $state<Uint8Array>();
   let pageTotal = $state(0);
   let current = $state(0);
@@ -47,10 +49,21 @@
   let markOpacity = $state(30);
   let markAngle = $state(45);
   let preset = $state<PresetKey>('balanced');
+  let zoom = $state<StageTransform>({ scale: 1, x: 0, y: 0 });
+  let stageW = $state(0); let stageH = $state(0);
   let token = 0;
+  const pointers = new Map<number, StagePoint>();
+  let pinchStart: { view: StageTransform; distance: number; midpoint: StagePoint } | null = null;
+  let panStart: { id: number; point: StagePoint; view: StageTransform } | null = null;
 
   const sourcePage = $derived(pages[current]?.index ?? 0);
   const currentLabel = $derived(pageTotal ? `${current + 1} of ${pageTotal}` : '');
+  const zoomLabel = $derived(`${Math.round(zoom.scale * 100)}%`);
+  const pageDisplay = $derived.by(() => {
+    if (!pageW || !pageH || stageW < 60 || stageH < 60) return { w: 0, h: 0 };
+    const k = Math.min(1, (stageW - 24) / pageW, (stageH - 24) / pageH, 1100 / pageW);
+    return { w: Math.max(1, Math.floor(pageW * k)), h: Math.max(1, Math.floor(pageH * k)) };
+  });
   const currentName = () => st.file?.name ?? 'document.pdf';
 
   function paintRotated(input: HTMLCanvasElement, rotation: number) {
@@ -58,6 +71,7 @@
     const turn = ((rotation % 360) + 360) % 360;
     canvas.width = turn % 180 ? input.height : input.width;
     canvas.height = turn % 180 ? input.width : input.height;
+    pageW = canvas.width; pageH = canvas.height;
     const ctx = canvas.getContext('2d')!;
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((turn * Math.PI) / 180);
@@ -85,6 +99,7 @@
       closePdf(doc);
       if (my !== token) return;
       source = bytes; pageTotal = total; pages = initialPages(total); current = 0;
+      zoom = { scale: 1, x: 0, y: 0 };
       sheet = null; bad = false; status = '';
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(file);
@@ -96,6 +111,12 @@
   $effect(() => {
     const file = st.file; void st.head;
     if (file) untrack(() => void loadFile(file));
+  });
+  $effect(() => {
+    const view = zoom, content = { x: pageDisplay.w, y: pageDisplay.h }, viewport = { x: stageW, y: stageH };
+    if (!content.x || !content.y) return;
+    const next = clampStage(view, content, viewport);
+    if (next.scale !== zoom.scale || next.x !== zoom.x || next.y !== zoom.y) zoom = next;
   });
   $effect(() => {
     const bytes = source, p = pages[current], my = token;
@@ -119,7 +140,42 @@
     try { const found = await readMeta(source); meta = { title: found.title, author: found.author, subject: found.subject, keywords: found.keywords, creator: found.creator, producer: found.producer }; originalMeta = { ...meta }; }
     catch (e) { bad = true; status = pdfErrorMessage(e, currentName()); }
   }
-  function changePage(n: number) { current = pageIndex(n, pages.length); status = ''; }
+  function changePage(n: number) { current = pageIndex(n, pages.length); zoom = { scale: 1, x: 0, y: 0 }; status = ''; }
+  function boundedZoom(next: StageTransform) {
+    zoom = clampStage(next, { x: pageDisplay.w || stageW, y: pageDisplay.h || stageH }, { x: stageW, y: stageH });
+  }
+  function stagePoint(e: PointerEvent): StagePoint {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
+  }
+  function stageDown(e: PointerEvent) {
+    if (sheet || versions || menu || (e.target instanceof Element && e.target.closest('button'))) return;
+    const point = stagePoint(e);
+    pointers.set(e.pointerId, point);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer may have ended */ }
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchStart = { view: { ...zoom }, distance: pointDistance(a, b), midpoint: pointMidpoint(a, b) };
+      panStart = null;
+    } else if (zoom.scale > 1) panStart = { id: e.pointerId, point, view: { ...zoom } };
+  }
+  function stageMove(e: PointerEvent) {
+    if (!pointers.has(e.pointerId)) return;
+    const point = stagePoint(e); pointers.set(e.pointerId, point);
+    if (pinchStart && pointers.size > 1) {
+      const [a, b] = [...pointers.values()];
+      boundedZoom(pinchTo(pinchStart.view, pinchStart.distance, pointDistance(a, b), pinchStart.midpoint, pointMidpoint(a, b)));
+    } else if (panStart?.id === e.pointerId) boundedZoom(panStage(panStart.view, point.x - panStart.point.x, point.y - panStart.point.y));
+  }
+  function stageUp(e: PointerEvent) {
+    pointers.delete(e.pointerId); pinchStart = null; panStart = null;
+    if (pointers.size === 1) {
+      const [id, point] = [...pointers.entries()][0];
+      if (zoom.scale > 1) panStart = { id, point, view: { ...zoom } };
+    }
+  }
+  function zoomBy(factor: number) { boundedZoom(zoomAt(zoom, zoom.scale * factor, { x: 0, y: 0 })); }
+  function resetZoom() { zoom = { scale: 1, x: 0, y: 0 }; }
 
   async function apply() {
     if (!source || !sheet) return;
@@ -174,13 +230,19 @@
   {/if}
 
   <main class="main">
-    <section class="stage" aria-label="PDF page preview">
-      {#if pageTotal}<canvas bind:this={canvas} class="page" aria-label="Page {current + 1}"></canvas>{:else}<p role="status" class="muted">{status || 'Opening PDF…'}</p>{/if}
+    <section class="stage" aria-label="PDF page preview. Pinch to zoom and drag to pan." bind:clientWidth={stageW} bind:clientHeight={stageH} onpointerdown={stageDown} onpointermove={stageMove} onpointerup={stageUp} onpointercancel={stageUp}>
+      {#if pageTotal}<canvas bind:this={canvas} class="page" style="width:{pageDisplay.w}px;height:{pageDisplay.h}px;transform:translate3d({zoom.x}px,{zoom.y}px,0) scale({zoom.scale})" aria-label="Page {current + 1} of {pageTotal}"></canvas>{:else}<p role="status" class="muted">{status || 'Opening PDF…'}</p>{/if}
+      <div class="zoom-controls" role="group" aria-label="PDF page zoom">
+        <button type="button" aria-label="Zoom out" disabled={zoom.scale <= 1} onclick={() => zoomBy(0.8)}>−</button>
+        <output aria-live="polite">{zoomLabel}</output>
+        <button type="button" aria-label="Zoom in" disabled={zoom.scale >= 6} onclick={() => zoomBy(1.25)}>+</button>
+        <button type="button" aria-label="Reset zoom" onclick={resetZoom}>Reset</button>
+      </div>
       {#if bad}<p class="toast" role="alert">{status}</p>{/if}
     </section>
     <nav class="pager" aria-label="PDF pages">
       <button class="ic" type="button" aria-label="Previous page" disabled={current === 0 || !!sheet} onclick={() => changePage(current - 1)}><Icon name="back" /></button>
-      <span>{currentLabel}</span>
+      <span aria-live="polite" aria-atomic="true">{currentLabel}</span>
       <button class="ic next" type="button" aria-label="Next page" disabled={current >= pageTotal - 1 || !!sheet} onclick={() => changePage(current + 1)}><Icon name="back" /></button>
     </nav>
 
@@ -264,18 +326,23 @@
   .menu { position: absolute; z-index: 9; top: calc(var(--top) - 4px); right: 8px; display: grid; min-width: 220px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 8px 28px rgb(0 0 0 / .24); }
   .menu button { padding: 12px; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; cursor: pointer; }
   .main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .stage { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 12px; }
-  .page { display: block; max-width: min(100%, 1100px); max-height: 100%; object-fit: contain; background: white; box-shadow: 0 3px 20px rgb(0 0 0 / .25); }
+  .stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 12px; touch-action: none; transition: flex-basis 220ms ease; }
+  .page { display: block; object-fit: contain; background: white; box-shadow: 0 3px 20px rgb(0 0 0 / .25); transform-origin: center; transition: width 220ms ease, height 220ms ease, transform 180ms ease-out; will-change: width, height, transform; }
+  .zoom-controls { position: absolute; z-index: 3; right: 12px; top: 12px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 2px 10px rgb(0 0 0 / .16); }
+  .zoom-controls button { min-width: 44px; min-height: 44px; border: 0; border-radius: 7px; color: var(--ink); background: transparent; font: inherit; cursor: pointer; }
+  .zoom-controls button:disabled { opacity: .4; }
+  .zoom-controls output { min-width: 48px; text-align: center; font-size: .85rem; }
   .pager { flex: none; display: flex; justify-content: center; align-items: center; gap: 18px; min-height: 56px; color: var(--ink); }
   .toast { position: absolute; bottom: 82px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: var(--ink); color: var(--paper); }
   .page-list,.version-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-  .page-list li { display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; }
+  .page-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; }
   .page-list li.active { border-color: var(--accent); }
-  .select { flex: 1; display: grid; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; }
+  .select { flex: 1 0 100%; min-height: 44px; display: grid; align-content: center; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; }
   .select span,.version-list span { color: var(--muted); font-size: .82rem; }
-  .mini { width: 34px; height: 36px; border: 0; border-radius: 6px; color: var(--ink); background: var(--paper); cursor: pointer; }
+  .mini { flex: none; width: 44px; height: 44px; border: 0; border-radius: 6px; color: var(--ink); background: var(--paper); cursor: pointer; }
   .mini:disabled { opacity: .35; }
   .version-list button { width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 10px; text-align: left; font: inherit; color: var(--ink); background: none; border: 1px solid var(--line); border-radius: 8px; }
   .version-list button[aria-current='true'] { border-color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { .stage, .page { transition-duration: .01ms; } }
   @media (min-width: 860px) { .main { flex-direction: row; } .stage { min-width: 0; } .pager { flex-direction: column; } }
 </style>

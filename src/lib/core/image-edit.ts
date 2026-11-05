@@ -38,6 +38,14 @@ export function cropRect(x0: number, y0: number, x1: number, y1: number, W: numb
 
 /** Which handle of the crop box is being dragged. 'move' drags the whole box. */
 export type Handle = 'move' | 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+/** Keyboard nudge for crop handles. Shift provides a larger 10-pixel step. */
+export function cropKeyboardDelta(key: string, shift = false): { dx: number; dy: number } | undefined {
+  const step = shift ? 10 : 1;
+  if (key === 'ArrowLeft') return { dx: -step, dy: 0 };
+  if (key === 'ArrowRight') return { dx: step, dy: 0 };
+  if (key === 'ArrowUp') return { dx: 0, dy: -step };
+  if (key === 'ArrowDown') return { dx: 0, dy: step };
+}
 /** Crop shapes offered in the editor. `ratio` is width / height; 'original' uses the picture's own shape and 'free' has none. */
 export const ASPECTS = [
   { id: 'free', label: 'Free' }, { id: 'original', label: 'Original' }, { id: '1:1', label: '1:1', ratio: 1 }, { id: '4:5', label: '4:5', ratio: 4 / 5 },

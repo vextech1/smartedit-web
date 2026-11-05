@@ -13,7 +13,7 @@
 <style>
   .dock { flex: none; padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
   .items { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 8px 10px; box-shadow: 0 4px 18px rgb(0 0 0 / .12); }
-  button { flex: 1 0 62px; display: grid; justify-items: center; gap: 4px; padding: 8px 2px; min-height: 64px; font: inherit; font-size: .9rem; color: var(--ink); background: none; border: 0; border-radius: 14px; cursor: pointer; }
+  button { flex: 1 0 68px; display: grid; justify-items: center; gap: 4px; padding: 8px 4px; min-height: 72px; font: inherit; font-size: .9rem; color: var(--ink); background: none; border: 0; border-radius: 14px; cursor: pointer; }
   button:active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
   button:disabled { opacity: .4; }
   @media (min-width: 860px) { .items { max-width: 560px; margin: 0 auto; } }

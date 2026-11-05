@@ -3,6 +3,32 @@ import { withinLimits, previewSize, pointOn, scaleRect, targetPx, linkedSide, pa
 import { presetById } from '../src/lib/core/presets';
 import { fitRect } from '../src/lib/core/resize';
 import { workspaceById } from '../src/lib/core/workspaces';
+import { cropKeyboardDelta } from '../src/lib/core/image-edit';
+import { clampStage, panBy as panStage, pinchTo, pointDistance, pointMidpoint, zoomAt } from '../src/lib/core/stage-gesture';
+
+describe('stage gestures', () => {
+  it('zooms around the selected point', () => {
+    expect(zoomAt({ scale: 1, x: 0, y: 0 }, 2, { x: 40, y: 20 })).toEqual({ scale: 2, x: -40, y: -20 });
+  });
+  it('pinches around its midpoint and follows midpoint movement', () => {
+    const a = { x: 10, y: 20 }, b = { x: 30, y: 20 }, next = { x: 50, y: 40 };
+    expect(pointDistance(a, b)).toBe(20); expect(pointMidpoint(a, b)).toEqual({ x: 20, y: 20 });
+    expect(pinchTo({ scale: 1, x: 0, y: 0 }, 20, 40, pointMidpoint(a, b), next)).toEqual({ scale: 2, x: 10, y: 0 });
+  });
+  it('pans and clamps the image to the stage bounds', () => {
+    const p = panStage({ scale: 2, x: 0, y: 0 }, 300, -100);
+    expect(clampStage(p, { x: 150, y: 100 }, { x: 100, y: 100 })).toEqual({ scale: 2, x: 100, y: -50 });
+    expect(clampStage({ scale: 0.2, x: 5, y: -5 }, { x: 200, y: 100 }, { x: 100, y: 100 })).toEqual({ scale: 1, x: 5, y: 0 });
+  });
+});
+
+describe('crop keyboard controls', () => {
+  it('moves one pixel with arrows, ten with Shift, and ignores other keys', () => {
+    expect(cropKeyboardDelta('ArrowLeft')).toEqual({ dx: -1, dy: 0 });
+    expect(cropKeyboardDelta('ArrowDown', true)).toEqual({ dx: 0, dy: 10 });
+    expect(cropKeyboardDelta('Enter')).toBeUndefined();
+  });
+});
 
 describe('output limits and previews', () => {
   it('accepts normal sizes and refuses absurd ones', () => {
