@@ -9,7 +9,7 @@
 
   const themes: [Theme, string][] = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']];
   const links = [['/library?trash=1', 'Trash', 'Deleted files, kept for 30 days'], ['/faq', 'FAQ', 'Common questions'], ['/contact', 'Contact', 'Get in touch'],
-    ['/privacy', 'Privacy policy', ''], ['/terms', 'Terms of use', ''], ['/delete-account', 'Delete account', 'Remove your data']];
+    ['/privacy', 'Privacy policy', ''], ['/terms', 'Terms of use', '']];
   let theme = $state<Theme>('system'); let lang = $state('eng');
   let used = $state(0); let quota = $state(0); let count = $state(0); let unavailable = $state(false); let note = $state('');
   const codes = OCR_LANGS.map((l) => l.code);

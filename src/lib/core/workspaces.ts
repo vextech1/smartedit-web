@@ -56,6 +56,13 @@ const INPUT: Record<string, FileKind> = {
 /** The kind of working file a tab takes as input. */
 export const tabInput = (slug: string): FileKind => INPUT[slug] ?? (workspaceFor(slug)?.id === 'photo' ? 'image' : 'pdf');
 
+/** Whether a tool can take a file of this kind. With no file open, every tool is available. */
+export const toolSupports = (slug: string, kind: FileKind | undefined): boolean => !kind || tabInput(slug) === kind;
+/** Whether any tool in a studio can take a file of this kind. */
+export const workspaceSupports = (w: Workspace, kind: FileKind | undefined): boolean => !kind || w.tabs.some((s) => toolSupports(s, kind));
+/** Short reason shown on a greyed-out tool. */
+export const unsupportedNote = (kind: FileKind | undefined): string => (kind === 'pdf' ? 'Not supported for a PDF' : 'Not supported for a picture');
+
 /** Link to a studio, optionally on a tab and for an open session. */
 export function studioHref(workspace: WorkspaceId, tab?: string, session?: string): string {
   const q = new URLSearchParams();

@@ -238,7 +238,7 @@
         <button type="button" aria-label="Zoom in" disabled={zoom.scale >= 6} onclick={() => zoomBy(1.25)}>+</button>
         <button type="button" aria-label="Reset zoom" onclick={resetZoom}>Reset</button>
       </div>
-      {#if bad}<p class="toast" role="alert">{status}</p>{/if}
+      {#if bad}<p class="toast" role="alert">{status}</p>{:else if st.note}<p class="toast" role="status">{st.note}</p>{/if}
     </section>
     <nav class="pager" aria-label="PDF pages">
       <button class="ic" type="button" aria-label="Previous page" disabled={current === 0 || !!sheet} onclick={() => changePage(current - 1)}><Icon name="back" /></button>

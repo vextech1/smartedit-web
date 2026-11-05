@@ -5,6 +5,7 @@
   import { SITE } from '#lib/site.ts';
   import { getSessions } from '#lib/core/session.ts';
   import { getRetentionDays } from '#lib/core/settings.ts';
+  import { activeWork } from '#lib/active.svelte.ts';
   let { children } = $props();
   const links = [
     ['/', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
@@ -14,7 +15,10 @@
   ] as const;
   const isCurrent = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href) || (href === '/tools' && page.url.pathname.startsWith('/studio')));
   // Work that has not been touched for the chosen number of days is removed (pinned work stays).
-  onMount(() => { try { void getSessions().purgeExpired(getRetentionDays()).catch(() => {}); } catch { /* storage unavailable */ } });
+  onMount(async () => {
+    try { await getSessions().purgeExpired(getRetentionDays()); } catch { /* storage unavailable */ }
+    await activeWork.refresh();   // after the purge, so expired work is forgotten
+  });
   const canonical = $derived(SITE.origin + (page.url.pathname === '/' ? '/' : page.url.pathname.replace(/\/$/, '')));
   // Tool pages carry their tool in page data; everything else shares the site name.
   const ogTitle = $derived((page.data as { tool?: { title: string } })?.tool ? `${(page.data as { tool: { title: string } }).tool.title} | ${SITE.name}` : SITE.name);

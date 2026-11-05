@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import FileDrop from './FileDrop.svelte';
   import ToolView from './ToolView.svelte';
+  import WorkStorage from './WorkStorage.svelte';
   import PhotoEditor from './editor/PhotoEditor.svelte';
   import PdfEditor from './editor/PdfEditor.svelte';
   import { StudioState, setStudio } from '#lib/workspace.svelte.ts';
@@ -12,7 +13,8 @@
   import { getRetentionDays } from '#lib/core/settings.ts';
   import { setPending, ago } from '#lib/core/handoff.ts';
   import { fmtBytes } from '#lib/core/format.ts';
-  import { fileKind, studioHref, tabInput, type Workspace } from '#lib/core/workspaces.ts';
+  import { activeWork, workUsage, UNSAVED_WARNING } from '#lib/active.svelte.ts';
+  import { fileKind, studioHref, tabInput, workspaceSupports, unsupportedNote, type Workspace, type WorkspaceId } from '#lib/core/workspaces.ts';
 
   let { workspace }: { workspace: Workspace } = $props();
   // The page re-creates this component for another studio, so the first value is the right one.
@@ -41,6 +43,9 @@
   const pdfEditor = $derived(ws.id === 'pdf' && kind === 'pdf');
   const showTool = $derived(!!st.file || (standalone && !!ws.startsEmpty?.includes(active)));
   const left = $derived(st.session ? daysLeft(st.session, retention) : undefined);
+  const accepts = (k: Parameters<typeof workspaceSupports>[1]) => workspaceSupports(ws, k);
+  // The open work (from another studio) is a kind of file this studio has no tool for.
+  const blocked = $derived(!st.file && activeWork.work && !workspaceSupports(ws, activeWork.work.kind) ? activeWork.work : undefined);
   const startLabel = ws.accept === 'application/pdf' ? 'Choose a PDF' : ws.accept === 'image/*' ? 'Choose a photo' : 'Choose a PDF or pictures';
 
   const here = () => goto(studioHref(ws.id, active, st.session?.id), { replace: true, reset: false });
@@ -58,7 +63,8 @@
     pick(fits.includes(active) ? active : (fits[0] ?? active));
   }
   async function refresh() {
-    try { recents = (await getSessions().list(ws.id)).filter((m) => m.id !== st.session?.id).slice(0, 6); } catch { unavailable = true; }
+    // Every piece of unfinished work this studio has a tool for, whichever studio it was last used in.
+    try { recents = (await getSessions().list()).filter((m) => m.id !== st.session?.id && workspaceSupports(ws, m.kind)).slice(0, 6); void workUsage.refresh(); } catch { unavailable = true; }
   }
 
   // A tab asked for from elsewhere (the Next steps dialog) opens here.
@@ -70,14 +76,20 @@
   $effect(() => {
     const sid = page.url.searchParams.get('s'), tab = page.url.searchParams.get('tab');
     if (!booted || !sid) return;
-    untrack(() => { if (sid !== st.session?.id) void st.load(sid).then((ok) => { if (!ok) return; standalone = false; if (tab && ws.tabs.includes(tab)) active = tab; settle(); }); });
+    untrack(() => { if (sid !== st.session?.id) void st.load(sid, accepts).then((ok) => { if (!ok) return; standalone = false; if (tab && ws.tabs.includes(tab)) active = tab; settle(); }); });
   });
 
   onMount(async () => {
     retention = getRetentionDays();
     const q = page.url.searchParams, sid = q.get('s'), tab = q.get('tab');
     if (tab && ws.tabs.includes(tab)) active = tab;
-    if (sid && !(await st.load(sid))) notice = 'That work is no longer saved. It may have expired or been cleared.';
+    if (sid) { if (!(await st.load(sid, accepts))) notice = 'That work is not available here. It may have expired, been cleared, or be a kind of file this studio cannot open.'; }
+    else {
+      // No work named in the address: carry on with the open work if one of this studio's tools can take it.
+      await activeWork.hydrate();
+      const a = activeWork.work;
+      if (a && accepts(a.kind)) await st.load(a.id, accepts);
+    }
     await refresh();
     if (st.file) settle();
     else if (tab && ws.startsEmpty?.includes(tab)) { standalone = true; pick(tab); }
@@ -97,13 +109,13 @@
   }
   async function resume(m: SessionMeta) {
     notice = ''; standalone = false;
-    if (await st.load(m.id)) settle(); else { notice = 'That work is no longer saved.'; await refresh(); }
+    if (await st.load(m.id, accepts)) settle(); else { notice = 'That work is no longer saved.'; await refresh(); }
   }
-  async function leave() { st.close(); standalone = false; mounted = {}; saved = 'idle'; await refresh(); void goto(studioHref(ws.id), { replace: true, reset: false }); }
+  async function leave() { if (st.unsaved && !confirm(UNSAVED_WARNING)) return; st.close(); standalone = false; mounted = {}; saved = 'idle'; await refresh(); void goto(studioHref(ws.id), { replace: true, reset: false }); }
   async function remove(id?: string) {
     if (!id || !confirm('Delete this saved work from this device? This cannot be undone.')) return;
     if (st.session?.id === id) { await st.discard(); mounted = {}; void goto(studioHref(ws.id), { replace: true, reset: false }); }
-    else { try { await getSessions().discard(id); } catch { /* ignore */ } }
+    else { try { await getSessions().discard(id); } catch { /* ignore */ } if (activeWork.work?.id === id) activeWork.clear(); }
     await refresh();
   }
   async function keepCopy() { try { saved = (await st.saveToLibrary()) ? 'ok' : 'failed'; } catch { saved = 'failed'; } }
@@ -118,7 +130,11 @@
     {/if}
   </section>
   {#if notice}<p role="status" class="warn">{notice}</p>{/if}
+  {#if blocked}
+    <p role="status" class="warn">{unsupportedNote(blocked.kind)} here: “{blocked.name}” is open, and {ws.title} has no tool for it. Choose a different file to start new work (yours stays in Continue), or <a href={studioHref(blocked.workspace as WorkspaceId, undefined, blocked.id)}>go back to it</a>.</p>
+  {/if}
   {#if unavailable}<p class="muted">Saved work is not available in this browser. You can still use the tools, but nothing is kept between steps.</p>{/if}
+  <WorkStorage />
   {#if recents.length}
     <h2>Continue where you left off</h2>
     <ul class="rows">

@@ -134,7 +134,5 @@
   </ul>
   {#if quota && total / quota >= 0.8}
     <p class="warn" role="alert" style="margin-top:18px">⚠ Storage is {Math.round(total / quota * 100)}% full ({fmtBytes(total)} of {fmtBytes(quota)}). Delete files you no longer need to avoid save failures.</p>
-  {:else}
-    <p class="muted" style="margin-top:18px">Using {fmtBytes(total)}{#if quota} of about {fmtBytes(quota)} available to this site{/if}. Saved files live in this browser, so clearing site data removes them. To use one in a tool, choose <em>Choose from My files</em>.</p>
   {/if}
 {/if}

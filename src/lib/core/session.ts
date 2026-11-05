@@ -24,10 +24,18 @@ export interface SessionStore {
 /** The Original plus the latest versions; older ones are pruned. */
 export const MAX_VERSIONS = 10;
 export const DEFAULT_RETENTION_DAYS = 7;
+/** All unfinished work together may use at most this much of the browser's storage. */
+export const WORK_LIMIT_BYTES = 100 * 1024 * 1024;
+/** Usage at or above this share of the limit counts as "almost full". */
+export const WORK_NEAR = 0.8;
 const DAY = 86_400_000;
 
 export class KindMismatchError extends Error {
   constructor() { super('This file is a different kind from the one being edited.'); this.name = 'KindMismatchError'; }
+}
+
+export class WorkLimitError extends Error {
+  constructor() { super('Unfinished work is using all of its storage.'); this.name = 'WorkLimitError'; }
 }
 
 const defaultId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
@@ -42,12 +50,21 @@ const isQuota = (e: unknown) => (e as { name?: string })?.name === 'QuotaExceede
 
 export class Sessions {
   constructor(private store: SessionStore, private now: () => number = Date.now, private newId: () => string = defaultId,
-    private max: number = MAX_VERSIONS) {}
+    private max: number = MAX_VERSIONS, private limit: number = WORK_LIMIT_BYTES) {}
+
+  /** How much of the shared limit unfinished work is using. */
+  async usage(): Promise<{ used: number; limit: number; near: boolean; full: boolean }> {
+    const used = await this.totalBytes();
+    return { used, limit: this.limit, near: used >= this.limit * WORK_NEAR, full: used >= this.limit };
+  }
+  /** Refuse to store `extra` more bytes if that would go over the limit. */
+  private async assertRoom(extra: number) { if ((await this.totalBytes()) + extra > this.limit) throw new WorkLimitError(); }
 
   /** Begin a session from a file. The file becomes the Original. */
   async start(workspace: string, blob: Blob, name: string): Promise<SessionMeta> {
     const kind = fileKind(blob.type);
     if (!kind) throw new KindMismatchError();
+    await this.assertRoom(blob.size);
     const t = this.now(), v: Version = { id: this.newId(), label: 'Original', name: name.trim() || 'file', type: blob.type, size: blob.size, at: t };
     const meta: SessionMeta = { id: this.newId(), workspace, kind, name: v.name, versions: [v], head: 0, created: t, updated: t };
     await this.store.putBlob(key(meta, v), await blob.arrayBuffer());
@@ -74,6 +91,7 @@ export class Sessions {
     const data = await blob.arrayBuffer();
     const cur = m.versions[m.head], curData = cur && await this.store.getBlob(key(m, cur));
     if (cur && curData && cur.type === blob.type && sameBytes(curData, data)) return { meta: m, added: false };
+    await this.assertRoom(blob.size);
     const v: Version = { id: this.newId(), label: label.trim() || 'Edit', name: name?.trim() || cur?.name || m.name, type: blob.type, size: blob.size, at: this.now() };
     try { await this.store.putBlob(key(m, v), data); }
     catch (e) {
@@ -97,6 +115,12 @@ export class Sessions {
     m.versions = m.versions.filter((_, i) => keep.has(i)); m.head = m.versions.length - 1;
     await this.store.putMeta(m);
   }
+  /** For every piece of work, keep only the Original and the working version. Returns the bytes freed. */
+  async compactAll(): Promise<number> {
+    const before = await this.totalBytes();
+    for (const m of await this.store.metas()) await this.compactMeta(m);
+    return before - (await this.totalBytes());
+  }
   /** Keep only the Original and the working version. Frees space when the browser says storage is full. */
   async compact(id: string) { const m = await this.get(id); if (m) await this.compactMeta(m); return this.get(id); }
 
@@ -110,6 +134,8 @@ export class Sessions {
   /** Mark as used just now, so retention counts from today. */
   async touch(id: string) { const m = await this.get(id); if (m) await this.save(m); }
   async setPinned(id: string, on: boolean) { const m = await this.get(id); if (!m) return; if (on) m.pinned = true; else delete m.pinned; await this.store.putMeta(m); }
+  /** Record the studio the work was last opened in, so Continue returns to it. */
+  async move(id: string, workspace: string) { const m = await this.get(id); if (m && m.workspace !== workspace) { m.workspace = workspace; await this.save(m); } }
   async rename(id: string, name: string) { const m = await this.get(id), n = name.trim(); if (m && n) { m.name = n; await this.save(m); } }
 
   async discard(id: string) {

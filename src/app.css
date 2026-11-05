@@ -120,6 +120,8 @@ nav.bottom { display: none; }
 .tile { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 18px 8px; min-height: 96px; border-radius: var(--r); background: var(--card);
         border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 600; font-size: .95rem; }
 .tile svg { color: var(--c); } .tile:hover { border-color: var(--c); }
+.tile.off { opacity: .42; cursor: not-allowed; } .tile.off:hover { border-color: var(--line); } .tile small { font-weight: 400; font-size: .75rem; color: var(--muted); }
+.card.off { opacity: .5; cursor: not-allowed; } .card.off h3 { margin: 0 0 4px; font-size: 1.05rem; } .card.off p { margin: 0; color: var(--muted); font-size: .95rem; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .chips button { flex: none; font: inherit; padding: 8px 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
 .chips button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
@@ -172,3 +174,13 @@ nav.bottom { display: none; }
 .wscards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .studiolink { margin: 0 0 16px; }
 .start .drop { margin-top: 4px; }
+
+.openbar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; margin: 0 0 18px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--card); }
+.openbar .grow { min-width: 0; } .openbar small { display: block; color: var(--accent); font-weight: 600; } .openbar strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.storage { padding: 12px 14px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.storage.full { border-color: var(--mark); }
+.storage .meter { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.storage .meter span { display: block; height: 100%; background: var(--accent); }
+.storage.full .meter span { background: var(--mark); }
+.storage .warn { margin: 8px 0 0; }
