@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { withinLimits, previewSize, pointOn, scaleRect, targetPx, linkedSide, panBy, startFormat, limitSide, TAB_SHEET, SHEETS, MAX_OUT_SIDE } from '../src/lib/core/photo-ops';
+import { withinLimits, previewSize, pointOn, scaleRect, targetPx, linkedSide, panBy, startFormat, limitSide, TAB_SHEET, SHEETS, PANEL_TOOLS, MAX_OUT_SIDE } from '../src/lib/core/photo-ops';
 import { presetById } from '../src/lib/core/presets';
 import { fitRect } from '../src/lib/core/resize';
 import { workspaceById } from '../src/lib/core/workspaces';
@@ -66,4 +66,8 @@ describe('photo tabs that open sheets', () => {
     for (const s of sheets) expect(SHEETS).toContain(s);
   });
   it('leaves the batch tools as panels', () => { for (const slug of ['collage-images', 'compress-image', 'convert-image', 'color-picker', 'rotate-images']) expect(Object.keys(TAB_SHEET)).not.toContain(slug); });
+  it('lists every batch/photo-inspection tool in the dock panel', () => {
+    expect(PANEL_TOOLS).toEqual(['rotate-images', 'collage-images', 'compress-image', 'convert-image', 'color-picker']);
+    for (const slug of PANEL_TOOLS) expect(tabs).toContain(slug);
+  });
 });

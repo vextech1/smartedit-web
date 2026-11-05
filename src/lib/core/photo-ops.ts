@@ -52,3 +52,5 @@ export const fmtLabel = (type: string) => FORMATS.find((f) => f.id === type)?.la
 /** Photo Studio tabs that now live in the editor as sheets (slug → sheet). The batch tools (Rotate several, Collage, Compress, Convert, Colour Picker) stay as panels. */
 export const TAB_SHEET = { 'resize-image': 'resize', 'round-image': 'round', 'annotate-image': 'markup', 'redact-image': 'hide', 'watermark-image': 'watermark', 'photo-frames': 'frames' } as const;
 export const SHEETS = ['resize', 'round', 'markup', 'hide', 'watermark', 'frames', 'export'] as const;
+/** Batch or inspection tools stay in the dock's More panel instead of replacing the current photo. */
+export const PANEL_TOOLS = ['rotate-images', 'collage-images', 'compress-image', 'convert-image', 'color-picker'] as const;

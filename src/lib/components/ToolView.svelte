@@ -18,6 +18,9 @@
   import ImageEditor from '#lib/components/ImageEditor.svelte';
   import ResizeImage from '#lib/components/ResizeImage.svelte';
   import FrameImage from '#lib/components/FrameImage.svelte';
+  import RotateImages from '#lib/components/RotateImages.svelte';
+  import CollageImages from '#lib/components/CollageImages.svelte';
+  import ColorPicker from '#lib/components/ColorPicker.svelte';
   let { tool }: { tool: Tool } = $props();
 </script>
 {#if tool.mode === 'scan'}<Scanner />
@@ -25,6 +28,9 @@
 {:else if tool.mode === 'edit'}<ImageEditor />
 {:else if tool.mode === 'resize'}<ResizeImage />
 {:else if tool.mode === 'frames'}<FrameImage />
+{:else if tool.mode === 'rotate'}<RotateImages />
+{:else if tool.mode === 'collage'}<CollageImages />
+{:else if tool.mode === 'colors'}<ColorPicker />
 {:else if tool.kind === 'image'}<ImageTool mode={tool.mode as 'compress' | 'convert'} />
 {:else if tool.mode === 'organize-pdf'}<PageEditor />
 {:else if tool.mode === 'split-pdf'}<SplitTool />

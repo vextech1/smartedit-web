@@ -87,6 +87,12 @@
     notice = ''; standalone = false; if (rest.length) setPending(rest);   // the tab that opens picks the rest up
     await st.open(first); settle();
   }
+  async function replacePhoto(file: File) {
+    if (fileKind(file.type) !== 'image') return;
+    notice = ''; standalone = false; saved = 'idle'; mounted = {};
+    await st.open(file);   // start a separate session; the previous photo remains available in Continue
+    await refresh();
+  }
   async function resume(m: SessionMeta) {
     notice = ''; standalone = false;
     if (await st.load(m.id)) settle(); else { notice = 'That work is no longer saved.'; await refresh(); }
@@ -126,7 +132,7 @@
 {/if}
 
 {#if showTool && editor}
-  <PhotoEditor onclose={leave} onremove={() => remove(st.session?.id)} oncopy={keepCopy} {saved} />
+  <PhotoEditor onclose={leave} onremove={() => remove(st.session?.id)} oncopy={keepCopy} onreplace={replacePhoto} {saved} />
 {:else if showTool}
   {#if st.file}
     <section class="studiohead" aria-label="Working file">

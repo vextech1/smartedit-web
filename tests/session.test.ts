@@ -17,6 +17,16 @@ describe('sessions', () => {
     expect(m.versions).toHaveLength(1); expect(m.versions[0].label).toBe('Original'); expect(m.head).toBe(0); expect(m.kind).toBe('pdf');
     const f = await s.file(m.id); expect(f?.name).toBe('report.pdf'); expect(f?.type).toBe('application/pdf'); expect(await f?.text()).toBe('A');
   });
+  it('keeps the previous photo session when a replacement starts a new session', async () => {
+    const { s, tick } = make();
+    const previous = await s.start('photo', png('old-photo'), 'old.png');
+    tick(1);
+    const replacement = await s.start('photo', png('new-photo'), 'new.png');
+    expect(replacement.id).not.toBe(previous.id);
+    expect((await s.list('photo')).map((m) => m.id)).toEqual([replacement.id, previous.id]);
+    expect(await text(await s.file(previous.id))).toBe('old-photo');
+    expect(await text(await s.file(replacement.id))).toBe('new-photo');
+  });
   it('refuses files that are not PDFs or pictures', async () => {
     await expect(make().s.start('pdf', new Blob(['x'], { type: 'application/zip' }), 'a.zip')).rejects.toBeInstanceOf(KindMismatchError);
   });

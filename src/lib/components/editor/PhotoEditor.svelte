@@ -25,10 +25,10 @@
   import FrameSheet from './sheets/FrameSheet.svelte';
   import ExportSheet from './sheets/ExportSheet.svelte';
   import type { Dims, SaveOpts } from './sheet-types.ts';
-  import { TAB_SHEET, SHEETS } from '#lib/core/photo-ops.ts';
+  import { PANEL_TOOLS, TAB_SHEET, SHEETS } from '#lib/core/photo-ops.ts';
 
   // The working photo lives in the studio; every applied change becomes a new version there (so undo and redo are the studio's).
-  let { onclose, onremove, oncopy, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; saved: 'idle' | 'ok' | 'failed' } = $props();
+  let { onclose, onremove, oncopy, onreplace, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; onreplace: (file: File) => void | Promise<void>; saved: 'idle' | 'ok' | 'failed' } = $props();
   const st = getStudio()!;
   const MAX_SIDE = 4096, PREVIEW = 1000, PAD = 28;
   const HOME = 'edit-image';   // the studio tab this editor stands for
@@ -67,6 +67,7 @@
   let menu = $state(false); let versions = $state(false); let listOpen = $state(false);
   let stageW = $state(0); let stageH = $state(0);
   let dl = $state('');
+  let replaceInput: HTMLInputElement;
   let token = 0;
 
   const ratio = $derived(aspectRatio(ratioId, W, H));
@@ -80,7 +81,7 @@
   });
   const panelSlug = $derived(st.tab && st.tab !== HOME && !(st.tab in TAB_SHEET) && workspaceById('photo')?.tabs.includes(st.tab) ? st.tab : null);
   const panelTool = $derived(panelSlug ? toolBySlug(panelSlug) : undefined);
-  const photoTools = $derived((workspaceById('photo')?.tabs ?? []).filter((s) => s !== HOME && !(s in TAB_SHEET)).map((s) => toolBySlug(s)!).filter(Boolean));
+  const photoTools = $derived(PANEL_TOOLS.map((s) => toolBySlug(s)!).filter(Boolean));
 
   const copy = (c: HTMLCanvasElement) => { const n = document.createElement('canvas'); n.width = c.width; n.height = c.height; n.getContext('2d')!.drawImage(c, 0, 0); return n; };
 
@@ -177,11 +178,18 @@
   function closeLayers() { if (menu) menu = false; else if (versions) versions = false; else if (panelSlug) leaveTool(); else if (listOpen) listOpen = false; else if (tool) cancelTool(); }
   function leaveTool() { st.tab = HOME; listOpen = true; }
   const menuDo = (f: () => void) => { menu = false; f(); };
+  function chooseReplacement() { menu = false; replaceInput.click(); }
+  function replacePicked() {
+    const file = replaceInput.files?.[0];
+    replaceInput.value = '';
+    if (file) void onreplace(file);
+  }
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') closeLayers(); }} />
 
 <div class="pe" role="region" aria-label="Photo editor">
+  <input bind:this={replaceInput} class="sr" type="file" accept="image/*" onchange={replacePicked} />
   <header class="top">
     <button class="ic" type="button" aria-label="Close this photo" onclick={onclose}><Icon name="back" /></button>
     <button class="ic" type="button" aria-label="Undo" disabled={!st.canUndo || !!tool || busy} onclick={() => st.undo()}><Icon name="undo" /></button>
@@ -197,6 +205,7 @@
       <button role="menuitem" type="button" onclick={() => menuDo(oncopy)} disabled={saved === 'ok'}>{saved === 'ok' ? 'Saved to My files ✓' : saved === 'failed' ? 'Could not save' : 'Save to My files'}</button>
       {#if st.session}<button role="menuitem" type="button" onclick={() => menuDo(() => st.togglePin())}>{st.session.pinned ? 'Unpin' : 'Pin (never expires)'}</button>{/if}
       {#if st.session}<button role="menuitem" type="button" onclick={() => menuDo(onremove)}>Delete this work</button>{/if}
+      <button role="menuitem" type="button" onclick={chooseReplacement}>Replace photo</button>
     </div>
   {/if}
 
