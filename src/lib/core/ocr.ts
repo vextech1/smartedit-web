@@ -17,14 +17,29 @@ export function joinPages(pages: string[]): string {
 }
 
 export async function createOcr(lang: string, onProgress: (p: number, status: string) => void) {
-  const { createWorker } = await import('tesseract.js');
+  let createWorker: (typeof import('tesseract.js'))['createWorker'];
+  try {
+    ({ createWorker } = await import('tesseract.js'));
+  } catch {
+    throw new Error('Could not load the text recognition engine. Reload the page and try again.');
+  }
   const at = (p: string) => new URL(p, location.origin).href;
-  const worker = await createWorker(lang, 1, {
-    workerPath: at('/ocr/worker.min.js'), corePath: at('/ocr/core'), langPath: at('/ocr/lang'), gzip: true,
-    logger: (m: { status: string; progress: number }) => onProgress(m.progress ?? 0, m.status ?? '')
-  });
+  let worker: Awaited<ReturnType<typeof createWorker>>;
+  try {
+    worker = await createWorker(lang, 1, {
+      workerPath: at('/ocr/worker.min.js'), corePath: at('/ocr/core'), langPath: at('/ocr/lang'), gzip: true,
+      logger: (m: { status: string; progress: number }) => onProgress(m.progress ?? 0, m.status ?? '')
+    });
+  } catch (e) {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (offline) throw new Error(`You're offline. The language data hasn't been downloaded yet. Connect and try again.`);
+    throw new Error(e instanceof Error ? `Text engine failed to start: ${e.message}` : 'The text engine could not start. Try reloading the page.');
+  }
   return {
-    async read(image: HTMLCanvasElement | Blob): Promise<string> { return (await worker.recognize(image)).data.text; },
+    async read(image: HTMLCanvasElement | Blob): Promise<string> {
+      try { return (await worker.recognize(image)).data.text; }
+      catch (e) { throw new Error(e instanceof Error ? `Recognition failed: ${e.message}` : 'Could not read text from this image.'); }
+    },
     stop: () => worker.terminate()
   };
 }

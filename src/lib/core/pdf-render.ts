@@ -4,15 +4,25 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 let lib: typeof import('pdfjs-dist') | null = null;
 async function pdfjs() {
   if (!lib) {
-    lib = await import('pdfjs-dist');
-    lib.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+    try {
+      lib = await import('pdfjs-dist');
+      lib.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+    } catch (e) {
+      lib = null;
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+      throw new Error(offline ? 'Could not load the PDF engine — you appear to be offline. Connect and try again.' : 'Could not load the PDF engine. Reload the page and try again.');
+    }
   }
   return lib;
 }
 
 export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   const { getDocument } = await pdfjs();
-  return getDocument({ data: bytes.slice() }).promise; // pdf.js takes ownership of the buffer, so hand it a copy
+  try {
+    return await getDocument({ data: bytes.slice() }).promise; // pdf.js takes ownership of the buffer, so hand it a copy
+  } catch (e) {
+    throw new Error(e instanceof Error ? `Could not open PDF: ${e.message}` : 'Could not open the PDF file. It may be damaged or password-protected.');
+  }
 }
 
 /** Render page n (1-based). Give either the longest side in px (`maxSide`) or a `scale` (1 = 72 dpi). */

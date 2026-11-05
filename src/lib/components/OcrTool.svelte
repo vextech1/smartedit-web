@@ -9,6 +9,11 @@
   import { getOcrLang } from '#lib/core/settings.ts';
 
   const MAX_PDF_PAGES = 20;
+  // Keys of languages whose data has already been cached by the service worker on this device.
+  const CACHE_KEY = 'smartedit.ocrCachedLangs';
+  function getCachedLangs(): Set<string> { try { return new Set(JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]')); } catch { return new Set(); } }
+  function markLangCached(code: string) { try { const s = getCachedLangs(); s.add(code); localStorage.setItem(CACHE_KEY, JSON.stringify([...s])); } catch { /* ignore */ } }
+
   interface B { name: string; text: string; bad?: boolean }
   let files = $state<File[]>([]);
   let lang = $state('eng');
@@ -17,13 +22,18 @@
   let status = $state(''); let pct = $state(0); let busy = $state(false);
   let copied = $state(-1);
 
+  /** True when the selected language hasn't been used on this device before. */
+  let langIsNew = $derived(!getCachedLangs().has(lang));
+
   function pick(f: File[]) { files = f; blocks = []; status = ''; pct = 0; }
 
   async function run() {
-    busy = true; blocks = []; pct = 0; status = 'Starting the text engine… (first use downloads it)';
+    busy = true; blocks = []; pct = 0;
+    status = langIsNew ? 'Downloading language data for the first time (around 10 MB)…' : 'Starting the text engine…';
     let ocr: Awaited<ReturnType<typeof createOcr>> | null = null;
     try {
       ocr = await createOcr(lang, (p, s) => { if (s.includes('recogniz')) pct = Math.round(p * 100); else status = s.charAt(0).toUpperCase() + s.slice(1) + '…'; });
+      markLangCached(lang);
       for (let i = 0; i < files.length; i++) {
         const f = files[i]; const pages: string[] = [];
         try {
@@ -47,7 +57,14 @@
         } catch (e) { blocks.push({ name: f.name, text: pdfErrorMessage(e, f.name), bad: true }); }
       }
       status = 'Done.';
-    } catch { status = 'The text engine could not start. Check your connection and try again.'; }
+    } catch (e) {
+      const isOffline = !navigator.onLine || (e instanceof Error && (e.message.includes('fetch') || e.message.includes('network') || e.message.includes('load')));
+      if (isOffline) {
+        status = `You're offline. The language data for "${OCR_LANGS.find(l => l.code === lang)?.label ?? lang}" hasn't been downloaded yet. Connect to the internet and try again.`;
+      } else {
+        status = 'The text engine could not start. Check your connection and try again.';
+      }
+    }
     finally { await ocr?.stop(); busy = false; }
   }
 
@@ -61,6 +78,7 @@
 <div class="controls">
   <label>Language<select bind:value={lang}>{#each OCR_LANGS as l}<option value={l.code}>{l.label}</option>{/each}</select></label>
 </div>
+{#if langIsNew && !busy}<p class="muted" style="font-size:.9rem;margin:4px 0 8px">⬇ First use of this language will download around 10 MB of data.</p>{/if}
 <button class="btn" type="button" disabled={!files.length || busy} onclick={run}>Extract text</button>
 <p role="status" aria-live="polite" class="muted">{status}{#if busy && pct}  {pct}%{/if}</p>
 {#each blocks as b, i}
