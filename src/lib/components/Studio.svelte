@@ -5,6 +5,7 @@
   import FileDrop from './FileDrop.svelte';
   import ToolView from './ToolView.svelte';
   import PhotoEditor from './editor/PhotoEditor.svelte';
+  import PdfEditor from './editor/PdfEditor.svelte';
   import { StudioState, setStudio } from '#lib/workspace.svelte.ts';
   import { toolBySlug } from '#lib/tools.ts';
   import { getSessions, daysLeft, type SessionMeta } from '#lib/core/session.ts';
@@ -37,6 +38,7 @@
   const kind = $derived(st.file ? fileKind(st.file.type) : undefined);
   // Photo Studio with a photo open uses the full-screen editor (stage, dock, bottom sheets) instead of the tab bar.
   const editor = $derived(ws.id === 'photo' && kind === 'image');
+  const pdfEditor = $derived(ws.id === 'pdf' && kind === 'pdf');
   const showTool = $derived(!!st.file || (standalone && !!ws.startsEmpty?.includes(active)));
   const left = $derived(st.session ? daysLeft(st.session, retention) : undefined);
   const startLabel = ws.accept === 'application/pdf' ? 'Choose a PDF' : ws.accept === 'image/*' ? 'Choose a photo' : 'Choose a PDF or pictures';
@@ -133,6 +135,8 @@
 
 {#if showTool && editor}
   <PhotoEditor onclose={leave} onremove={() => remove(st.session?.id)} oncopy={keepCopy} onreplace={replacePhoto} {saved} />
+{:else if showTool && pdfEditor}
+  <PdfEditor onclose={leave} onremove={() => remove(st.session?.id)} oncopy={keepCopy} {saved} />
 {:else if showTool}
   {#if st.file}
     <section class="studiohead" aria-label="Working file">

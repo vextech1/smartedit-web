@@ -6,6 +6,21 @@ import { blocksToText, blockToText, mdEscape, pdfToText } from '../src/lib/core/
 import type { PdfDocLike } from '../src/lib/core/pdf-docx';
 import type { ParagraphBlock } from '../src/lib/core/docx-writer';
 import { toolBySlug } from '../src/lib/tools';
+import { initialPages, movePage, pageIndex, removePage, rotatePage } from '../src/lib/core/pdf-studio';
+
+describe('PDF Studio page state', () => {
+  it('creates a page sequence and clamps page navigation', () => {
+    expect(initialPages(3)).toEqual([{ index: 0, rotate: 0 }, { index: 1, rotate: 0 }, { index: 2, rotate: 0 }]);
+    expect(pageIndex(-4, 3)).toBe(0); expect(pageIndex(9, 3)).toBe(2); expect(pageIndex(0, 0)).toBe(0);
+  });
+  it('reorders, rotates, and removes pages without losing source indices', () => {
+    const pages = initialPages(3);
+    expect(movePage(pages, 0, 1).map((p) => p.index)).toEqual([1, 0, 2]);
+    expect(rotatePage(pages, 1, -90)[1].rotate).toBe(270);
+    expect(removePage(pages, 1).map((p) => p.index)).toEqual([0, 2]);
+    expect(removePage(initialPages(1), 0)).toHaveLength(1);
+  });
+});
 
 async function pdfWith(n: number, opt: { w?: number; h?: number; rotate?: number; text?: boolean } = {}): Promise<Uint8Array> {
   const d = await PDFDocument.create(); const f = await d.embedFont(StandardFonts.Helvetica);
