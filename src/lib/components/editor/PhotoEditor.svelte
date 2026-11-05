@@ -2,6 +2,8 @@
   import { onMount, untrack } from 'svelte';
   import { getStudio } from '#lib/workspace.svelte.ts';
   import { loadBitmap, draw, toBlob } from '#lib/core/image.ts';
+  import { searchQuality, setJpegDpi, setPngDpi } from '#lib/core/resize.ts';
+  import { onWhite } from '#lib/core/photo-render.ts';
   import { baseName } from '#lib/core/format.ts';
   import { ago } from '#lib/core/handoff.ts';
   import { fmtBytes } from '#lib/core/format.ts';
@@ -15,12 +17,23 @@
   import SliderRow from './SliderRow.svelte';
   import ParamTabs from './ParamTabs.svelte';
   import CropOverlay from './CropOverlay.svelte';
+  import ResizeSheet from './sheets/ResizeSheet.svelte';
+  import RoundSheet from './sheets/RoundSheet.svelte';
+  import MarkupSheet from './sheets/MarkupSheet.svelte';
+  import HideSheet from './sheets/HideSheet.svelte';
+  import WatermarkSheet from './sheets/WatermarkSheet.svelte';
+  import FrameSheet from './sheets/FrameSheet.svelte';
+  import ExportSheet from './sheets/ExportSheet.svelte';
+  import type { Dims, SaveOpts } from './sheet-types.ts';
+  import { TAB_SHEET, SHEETS } from '#lib/core/photo-ops.ts';
 
   // The working photo lives in the studio; every applied change becomes a new version there (so undo and redo are the studio's).
   let { onclose, onremove, oncopy, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; saved: 'idle' | 'ok' | 'failed' } = $props();
   const st = getStudio()!;
   const MAX_SIDE = 4096, PREVIEW = 1000, PAD = 28;
-  const HOME = 'edit-image';   // the studio tab this editor stands for; every other photo tab opens in the Tools panel
+  const HOME = 'edit-image';   // the studio tab this editor stands for
+  // Photo tabs that now live in the editor as sheets (TAB_SHEET): opening one of them, from the Tools page say, opens its sheet on the photo.
+  type ToolId = 'crop' | 'adjust' | (typeof SHEETS)[number];
   const OUT: Record<string, string> = { 'image/jpeg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp' };
   const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
   const PARAMS = [
@@ -33,16 +46,19 @@
   };
   const LOOKS = [{ id: 'none', label: 'Original' }, { id: 'gray', label: 'Black & white' }, { id: 'document', label: 'Clean document' }] as const;
   const DOCK = [
-    { id: 'crop', label: 'Crop', icon: 'crop' }, { id: 'adjust', label: 'Adjust', icon: 'adjust' }, { id: 'rotate', label: 'Rotate', icon: 'rotate' },
-    { id: 'flip', label: 'Flip', icon: 'flip' }, { id: 'tools', label: 'Tools', icon: 'tools' }
+    { id: 'crop', label: 'Crop', icon: 'crop' }, { id: 'adjust', label: 'Adjust', icon: 'adjust' }, { id: 'rotate', label: 'Rotate', icon: 'rotate' }, { id: 'flip', label: 'Flip', icon: 'flip' },
+    { id: 'resize', label: 'Resize', icon: 'resize' }, { id: 'round', label: 'Round', icon: 'round' }, { id: 'markup', label: 'Draw & Text', icon: 'draw' }, { id: 'hide', label: 'Blur or Hide', icon: 'hide' },
+    { id: 'watermark', label: 'Watermark', icon: 'watermark' }, { id: 'frames', label: 'Frames', icon: 'frames' }, { id: 'export', label: 'Export', icon: 'export' }, { id: 'tools', label: 'More', icon: 'tools' }
   ];
 
   let base = $state.raw<HTMLCanvasElement | null>(null);      // the working photo at full size (up to MAX_SIDE)
-  let prev: HTMLCanvasElement | null = null;                 // a smaller copy used for live previews
+  let prev = $state.raw<HTMLCanvasElement | null>(null);     // a smaller copy used for live previews
   let W = $state(0); let H = $state(0);
   let view = $state<HTMLCanvasElement>();
   let rev = $state(0);
-  let tool = $state<null | 'crop' | 'adjust'>(null);
+  let tool = $state<ToolId | null>(null);
+  let outDims = $state<Dims | null>(null);                  // set by a sheet that changes the picture's shape (Resize, Round, Frames), so the stage fits to it
+  let afterMsg = '';                                         // a note to show once the new version has loaded
   let adj = $state<Adjust>({ ...NO_ADJUST });
   let param = $state<ParamId>('brightness');
   let crop = $state<Rect | null>(null);
@@ -57,13 +73,14 @@
   const cur = $derived(PARAMS.find((p) => p.id === param)!);
   // The photo is as large as fits the free space, centred. The sheet taking space makes the stage shorter, so the photo re-fits above it.
   const disp = $derived.by(() => {
-    if (!W || stageW < 60 || stageH < 60) return { w: 0, h: 0 };
-    const s = Math.min((stageW - PAD) / W, (stageH - PAD) / H, 2);
-    return { w: Math.max(1, Math.floor(W * s)), h: Math.max(1, Math.floor(H * s)) };
+    const sw = outDims?.w ?? W, sh = outDims?.h ?? H;
+    if (!sw || !sh || stageW < 60 || stageH < 60) return { w: 0, h: 0 };
+    const s = Math.min((stageW - PAD) / sw, (stageH - PAD) / sh, 2);
+    return { w: Math.max(1, Math.floor(sw * s)), h: Math.max(1, Math.floor(sh * s)) };
   });
-  const panelSlug = $derived(st.tab && st.tab !== HOME && workspaceById('photo')?.tabs.includes(st.tab) ? st.tab : null);
+  const panelSlug = $derived(st.tab && st.tab !== HOME && !(st.tab in TAB_SHEET) && workspaceById('photo')?.tabs.includes(st.tab) ? st.tab : null);
   const panelTool = $derived(panelSlug ? toolBySlug(panelSlug) : undefined);
-  const photoTools = $derived((workspaceById('photo')?.tabs ?? []).filter((s) => s !== HOME).map((s) => toolBySlug(s)!).filter(Boolean));
+  const photoTools = $derived((workspaceById('photo')?.tabs ?? []).filter((s) => s !== HOME && !(s in TAB_SHEET)).map((s) => toolBySlug(s)!).filter(Boolean));
 
   const copy = (c: HTMLCanvasElement) => { const n = document.createElement('canvas'); n.width = c.width; n.height = c.height; n.getContext('2d')!.drawImage(c, 0, 0); return n; };
 
@@ -71,12 +88,12 @@
     const mine = ++token;
     try {
       const bmp = await loadBitmap(f); const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
-      const c = draw(bmp, Math.round(bmp.width * k), Math.round(bmp.height * k), f.type === 'image/jpeg'); bmp.close();
+      const c = draw(bmp, Math.round(bmp.width * k), Math.round(bmp.height * k), f.type === 'image/jpeg'); bmp.close();   // only JPEG gets a white backing; PNG and WebP keep their see-through areas
       if (mine !== token) { c.width = 0; return; }
       const p = Math.min(1, PREVIEW / Math.max(c.width, c.height)); const small = document.createElement('canvas');
       small.width = Math.max(1, Math.round(c.width * p)); small.height = Math.max(1, Math.round(c.height * p)); small.getContext('2d')!.drawImage(c, 0, 0, small.width, small.height);
       const old = base; if (prev) prev.width = 0; prev = small; base = c; W = c.width; H = c.height; if (old) old.width = 0;
-      tool = null; adj = { ...NO_ADJUST }; crop = null; msg = ''; rev++;
+      tool = null; outDims = null; adj = { ...NO_ADJUST }; crop = null; msg = afterMsg; afterMsg = ''; rev++;
     } catch { if (mine === token) msg = 'That file could not be read as an image.'; }
   }
   // Load (or reload) whenever the working file changes: first open, after applying, undo and redo.
@@ -84,8 +101,9 @@
 
   // Draw the preview: the small copy with the current adjustments.
   $effect(() => {
-    void rev; const a = { ...adj };
+    void rev; const a = { ...adj }, t = tool;
     if (!view || !prev) return;
+    if (t && t !== 'crop' && t !== 'adjust' && t !== 'export') return;   // the other sheets draw their own live preview
     view.width = prev.width; view.height = prev.height;
     const ctx = view.getContext('2d')!; ctx.drawImage(prev, 0, 0);
     if (!isNeutral(a)) { const d = ctx.getImageData(0, 0, view.width, view.height); applyAdjust(d.data, a); ctx.putImageData(d, 0, 0); }
@@ -93,9 +111,18 @@
   $effect(() => { const f = st.file; if (!f) return; const u = URL.createObjectURL(f); dl = u; return () => URL.revokeObjectURL(u); });
   onMount(() => { const o = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = o; }; });
 
-  async function save(canvas: HTMLCanvasElement, label: string): Promise<boolean> {
-    const f = st.file!; const blob = await toBlob(canvas, OUT[f.type] ?? 'image/png', 0.92);
+  async function save(canvas: HTMLCanvasElement, label: string, o: SaveOpts = {}): Promise<boolean> {
+    const f = st.file!, type = o.type ?? OUT[f.type] ?? 'image/png', flat = type === 'image/jpeg' ? onWhite(canvas) : canvas;   // JPG has no see-through, so flatten onto white
+    let blob: Blob | null;
+    if (o.maxBytes && type !== 'image/png') {   // a form's file-size limit: the best quality that still fits
+      const r = await searchQuality((q) => toBlob(flat, type, q), o.maxBytes - 64);
+      blob = r?.blob ?? null; if (r && !r.fits) afterMsg = 'Could not get under the size limit. This is the smallest it could be.';
+    } else blob = await toBlob(flat, type, o.quality ?? 0.92);
+    if (flat !== canvas) flat.width = 0;
     if (!blob) throw new Error('encode');
+    if (o.dpi && (blob.type === 'image/jpeg' || blob.type === 'image/png')) {   // so print sizes in mm or inches stay that size
+      const bytes = new Uint8Array(await blob.arrayBuffer()); blob = new Blob([(blob.type === 'image/jpeg' ? setJpegDpi(bytes, o.dpi) : setPngDpi(bytes, o.dpi)) as BlobPart], { type: blob.type });
+    }
     return st.commit(blob, label, `${baseName(f.name)}.${EXT[blob.type] ?? 'png'}`);
   }
   async function run(fn: () => Promise<void>) { busy = true; msg = ''; try { await fn(); } catch { msg = 'That could not be applied. Try again.'; } busy = false; }
@@ -104,10 +131,20 @@
     msg = ''; menu = false;
     if (id === 'crop') { ratioId = 'free'; crop = fitAspect(W, H); tool = 'crop'; }
     else if (id === 'adjust') { adj = { ...NO_ADJUST }; tool = 'adjust'; }
+    else if ((SHEETS as readonly string[]).includes(id)) tool = id as ToolId;
     else if (id === 'tools') listOpen = true;
     else if (id === 'rotate' || id === 'flip') void transform(id);
   }
-  function cancelTool() { tool = null; crop = null; adj = { ...NO_ADJUST }; }
+  function cancelTool() { tool = null; outDims = null; crop = null; adj = { ...NO_ADJUST }; }
+  /** What every new sheet calls to save its picture as the next version. The sheet closes when the new version loads (or at once if nothing changed). */
+  async function applyFromSheet(build: () => HTMLCanvasElement | Promise<HTMLCanvasElement>, label: string, o?: SaveOpts) {
+    await run(async () => { const c = await build(); try { const added = await save(c, label, o); if (!added) cancelTool(); } finally { c.width = 0; } });
+  }
+  // Opening a photo tab that now lives in the editor (from the Tools page, a link or the Home page) opens its sheet.
+  $effect(() => {
+    const sheet = (TAB_SHEET as Record<string, ToolId>)[st.tab];
+    if (sheet && base && !tool) untrack(() => { st.tab = HOME; pick(sheet); });
+  });
   async function transform(kind: 'rotate' | 'flip') {
     if (!base) return; const b = base;
     await run(async () => {
@@ -193,6 +230,20 @@
         </div>
         <p class="hint">{crop.w} × {crop.h} px. Drag the handles on the photo.</p>
       </ToolSheet>
+    {:else if base && prev && tool === 'resize'}
+      <ResizeSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} bind:outDims />
+    {:else if base && prev && tool === 'round'}
+      <RoundSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} bind:outDims />
+    {:else if base && prev && tool === 'markup'}
+      <MarkupSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} />
+    {:else if base && prev && tool === 'hide'}
+      <HideSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} />
+    {:else if base && prev && tool === 'watermark'}
+      <WatermarkSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} />
+    {:else if base && prev && tool === 'frames'}
+      <FrameSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} bind:outDims />
+    {:else if base && prev && tool === 'export'}
+      <ExportSheet {base} {prev} {view} {busy} onapply={applyFromSheet} oncancel={cancelTool} fileType={st.file?.type ?? ''} />
     {:else if versions && st.session}
       <ToolSheet title="Versions" oncancel={() => (versions = false)}>
         <ol class="vlist">

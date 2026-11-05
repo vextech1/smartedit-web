@@ -62,5 +62,6 @@ Open decision: password-protected PDFs (MuPDF WASM is AGPL; qpdf-wasm is an alte
 8. **Photo editor shell** (plan and status: `docs/EDITOR_PLAN.md`)
    - With a photo open, Photo Studio renders `editor/PhotoEditor.svelte` full screen instead of the tab bar: centred stage, bottom dock, bottom sheets (`ToolSheet`, `SliderRow`, `ParamTabs`), crop handles on the photo (`CropOverlay`). The stage measures its free space and re-fits the photo when a sheet opens.
    - Applying a tool renders at full size and commits a version to the studio session, so undo, redo, Versions, Save to My files and retention all keep working. Other photo tools open in a *Tools* panel on the same photo.
+   - Phase 2 adds a sheet per tool in `editor/sheets/` (Resize, Round, Draw & Text, Blur or Hide, Watermark, Frames, Export). Photos are no longer flattened onto white when they are PNG or WebP, so see-through corners survive further edits; JPG is flattened on save. A form's size limit (Resize presets) is met by searching for the best JPG quality; mm and inch sizes get their dpi written into the file.
    - Editor class names are prefixed (`pframe`, `pview`...) because `app.css` has global `.frame`, `.view`, `.menu`, `.tile` and `.chips` rules that would otherwise leak in.
 

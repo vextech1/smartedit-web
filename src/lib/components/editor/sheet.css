@@ -1,0 +1,10 @@
+/* Shared bits for the editor's sheets. Names start with sh- so they cannot collide with the site's global rules. */
+.sh-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin: 0 0 12px; }
+.sh-hint { margin: 2px 0 10px; color: var(--muted); font-size: .95rem; }
+.sh-warn { margin: 2px 0 10px; color: var(--warn); font-size: .95rem; }
+.sh-chk { display: flex; gap: 10px; align-items: center; font-size: 1rem; margin: 6px 0 12px; }
+.sh-chk input { width: 22px; height: 22px; flex: none; }
+.sh-btn { font: inherit; font-size: 1rem; padding: 10px 16px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.sh-btn:disabled { opacity: .4; cursor: default; }
+.sh-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.sh-file:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
