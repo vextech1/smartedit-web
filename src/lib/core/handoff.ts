@@ -11,10 +11,13 @@ export function routeFor(files: { type: string }[]): string | undefined {
   return undefined;
 }
 export function setPending(files: File[], now = Date.now()) { pending = { files, at: now }; }
-/** Returns (and forgets) the waiting files that the tool accepts. Anything older than 15 seconds is dropped. */
-export function takePending(ok: (f: File) => boolean, now = Date.now()): File[] {
+/** Returns (and forgets) the waiting files that the tool accepts. Anything older than 15 seconds is dropped.
+ *  `expired` is true when files existed but timed out — use it to show the user a message. */
+export function takePending(ok: (f: File) => boolean, now = Date.now()): { files: File[]; expired: boolean } {
   const p = pending; pending = undefined;
-  return p && now - p.at <= TTL ? p.files.filter(ok) : [];
+  if (!p) return { files: [], expired: false };
+  if (now - p.at > TTL) return { files: [], expired: true };
+  return { files: p.files.filter(ok), expired: false };
 }
 export function ago(then: number, now = Date.now()): string {
   const m = Math.max(0, Math.floor((now - then) / 60_000));

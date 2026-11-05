@@ -10,13 +10,19 @@
   let input: HTMLInputElement;
   let saved = $state(0);       // saved files that fit this tool
   let picking = $state(false);
+  let expired = $state(false); // true when files timed out in transit from home page
   const ok = (f: File) => accept.split(',').some((a) => (a.endsWith('/*') ? f.type.startsWith(a.slice(0, -1)) : f.type === a.trim()));
   function take(list: FileList | null) {
     const files = Array.from(list ?? []).filter(ok);
-    if (files.length) onfiles(multiple ? files : files.slice(0, 1));
+    if (files.length) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }
   }
-  function fromLibrary(files: File[]) { onfiles(multiple ? files : files.slice(0, 1)); }
-  onMount(() => { const p = takePending(ok); if (p.length) onfiles(multiple ? p : p.slice(0, 1)); try { getLibrary().list().then((l) => { saved = l.filter((f) => matchesAccept(f.type, accept)).length; }).catch(() => {}); } catch { /* storage unavailable */ } });
+  function fromLibrary(files: File[]) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }
+  onMount(() => {
+    const result = takePending(ok);
+    if (result.expired) { expired = true; }
+    else if (result.files.length) { onfiles(multiple ? result.files : result.files.slice(0, 1)); }
+    try { getLibrary().list().then((l) => { saved = l.filter((f) => matchesAccept(f.type, accept)).length; }).catch(() => {}); } catch { /* storage unavailable */ }
+  });
 </script>
 
 <input bind:this={input} class="sr" id="file-{uid}" type="file" {accept} {multiple}
@@ -26,5 +32,6 @@
   ondrop={(e) => { e.preventDefault(); over = false; take(e.dataTransfer?.files ?? null); }}>
   {label}<small>{hint}</small>
 </label>
+{#if expired}<p class="warn" role="alert" style="margin:8px 0 0">The page took too long to load and your files were cleared. Please choose them again.</p>{/if}
 {#if saved}<p style="margin:8px 0 0"><button class="btn small ghost" type="button" onclick={() => (picking = true)}>Choose from My files ({saved})</button></p>{/if}
 {#if picking}<LibraryPicker {accept} {multiple} onfiles={fromLibrary} onclose={() => (picking = false)} />{/if}
