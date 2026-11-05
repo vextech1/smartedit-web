@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import CameraCapture from './CameraCapture.svelte';
   import CornerEditor from './CornerEditor.svelte';
   import ResultRow from './ResultRow.svelte';
@@ -27,6 +28,9 @@
 
   const jpeg = (c: HTMLCanvasElement, q = 0.9) => toBlob(c, 'image/jpeg', q);
   const clearOuts = () => { outs.forEach((o) => URL.revokeObjectURL(o.url)); outs = []; };
+
+  // Free the page thumbnails, outputs and the photo being cropped when the tool is closed.
+  onMount(() => () => { clearOuts(); pages.forEach((p) => URL.revokeObjectURL(p.thumb)); if (draft) draft.src.width = 0; });
 
   /** Auto-detect on a small copy, then scale the corners back up to the full photo. */
   function detect(src: HTMLCanvasElement): Quad | null {

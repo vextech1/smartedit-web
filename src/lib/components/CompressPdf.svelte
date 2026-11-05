@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import { baseName, fmtBytes } from '#lib/core/format.ts';
   import { jpegRecompressor, toBlob } from '#lib/core/image.ts';
@@ -21,19 +22,21 @@
   let zip = $state<{ url: string; bytes: number } | null>(null);
 
   function reset() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; results = []; zip = null; status = ''; }
+  onMount(() => () => reset());   // free the result files when the tool is closed
   function pick(f: File[]) { reset(); files = f.slice(0, 20); }
 
   async function rasterize(bytes: Uint8Array, name: string, i: number) {
     const P = PRESETS[preset], doc = await openPdf(bytes), pages = [];
-    for (let n = 1; n <= doc.numPages; n++) {
-      status = `File ${i + 1} of ${files.length}: page ${n} of ${doc.numPages}…`;
-      const canvas = await renderPage(doc, n, { scale: P.dpi / 72 });
-      if (gray) { const g = canvas.getContext('2d')!, img = g.getImageData(0, 0, canvas.width, canvas.height); toGrayscale(img.data); g.putImageData(img, 0, 0); }
-      const blob = await toBlob(canvas, 'image/jpeg', P.quality);
-      pages.push({ bytes: new Uint8Array(await blob!.arrayBuffer()), wPt: canvas.width * 72 / P.dpi, hPt: canvas.height * 72 / P.dpi });
-      canvas.width = canvas.height = 0;
-    }
-    closePdf(doc);
+    try {
+      for (let n = 1; n <= doc.numPages; n++) {
+        status = `File ${i + 1} of ${files.length}: page ${n} of ${doc.numPages}…`;
+        const canvas = await renderPage(doc, n, { scale: P.dpi / 72 });
+        if (gray) { const g = canvas.getContext('2d')!, img = g.getImageData(0, 0, canvas.width, canvas.height); toGrayscale(img.data); g.putImageData(img, 0, 0); }
+        const blob = await toBlob(canvas, 'image/jpeg', P.quality);
+        pages.push({ bytes: new Uint8Array(await blob!.arrayBuffer()), wPt: canvas.width * 72 / P.dpi, hPt: canvas.height * 72 / P.dpi });
+        canvas.width = canvas.height = 0;
+      }
+    } finally { closePdf(doc); }
     return pagesToPdf(pages);
   }
 

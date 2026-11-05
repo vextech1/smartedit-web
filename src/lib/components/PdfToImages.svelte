@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -14,6 +15,7 @@
   let out = $state<{ name: string; bytes: number; url: string; count: number } | null>(null);
 
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the result file when the tool is closed
   function pick(f: File[]) { clear(); file = f[0]; }
 
   async function run() {
@@ -22,15 +24,16 @@
       const doc = await openPdf(await readBytes(file!));
       const ext = fmt === 'image/png' ? 'png' : 'jpg', base = baseName(file!.name), pad = String(doc.numPages).length;
       const files: { name: string; bytes: Uint8Array }[] = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        status = `Converting page ${i} of ${doc.numPages}…`;
-        const canvas = await renderPage(doc, i, { scale: dpi / 72 });
-        const blob = await toBlob(canvas, fmt, 0.9);
-        canvas.width = canvas.height = 0; // free the pixels right away
-        if (!blob) throw new Error('encode failed');
-        files.push({ name: `${base}-page-${String(i).padStart(pad, '0')}.${ext}`, bytes: new Uint8Array(await blob.arrayBuffer()) });
-      }
-      closePdf(doc);
+      try {
+        for (let i = 1; i <= doc.numPages; i++) {
+          status = `Converting page ${i} of ${doc.numPages}…`;
+          const canvas = await renderPage(doc, i, { scale: dpi / 72 });
+          const blob = await toBlob(canvas, fmt, 0.9);
+          canvas.width = canvas.height = 0; // free the pixels right away
+          if (!blob) throw new Error('encode failed');
+          files.push({ name: `${base}-page-${String(i).padStart(pad, '0')}.${ext}`, bytes: new Uint8Array(await blob.arrayBuffer()) });
+        }
+      } finally { closePdf(doc); }
       const z = zipFiles(files);
       out = { name: `${base}-images.zip`, bytes: z.length, url: URL.createObjectURL(zipBlob(z)), count: files.length };
       status = `Done. ${files.length} ${files.length === 1 ? 'image' : 'images'} in the ZIP.`;

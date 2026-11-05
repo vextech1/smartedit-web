@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import SaveButton from './SaveButton.svelte';
   import { baseName, fmtBytes } from '#lib/core/format.ts';
@@ -49,10 +50,14 @@
   const canSheet = $derived(!isPct && (physical || !!preset));
 
   function reset() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; results = []; zip = null; status = ''; bad = false; }
+  let pickSeq = 0;   // the newest pick wins: a slower, older decode must close itself, not replace the current photo
+  onMount(() => () => { pickSeq++; reset(); first?.close(); first = null; });   // free the results and the decoded photo when the tool is closed
   async function pick(f: File[]) {
+    const my = ++pickSeq;
     reset(); files = f; confirmed = false; zoom = 1; panX = 0; panY = 0;
     first?.close(); first = null;
-    try { first = await loadBitmap(f[0]); } catch { status = 'That file could not be read as an image.'; bad = true; }
+    try { const b = await loadBitmap(f[0]); if (my === pickSeq) first = b; else b.close(); }
+    catch { if (my === pickSeq) { status = 'That file could not be read as an image.'; bad = true; } }
   }
   function choose() {
     confirmed = false; reset();

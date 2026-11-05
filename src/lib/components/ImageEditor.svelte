@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import SaveButton from './SaveButton.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -30,6 +31,8 @@
   let outUrl = $state('');
   let outName = $state('');
   let tabs: HTMLButtonElement[] = [];
+
+  onMount(() => () => { if (outUrl) URL.revokeObjectURL(outUrl); });   // free the exported file when the tool is closed
 
   const copyOf = (c: HTMLCanvasElement) => { const n = document.createElement('canvas'); n.width = c.width; n.height = c.height; n.getContext('2d')!.drawImage(c, 0, 0); return n; };
   const sameAdj = (a: Adjust, b: Adjust) => a.brightness === b.brightness && a.contrast === b.contrast && a.saturation === b.saturation && a.mode === b.mode;

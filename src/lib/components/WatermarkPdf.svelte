@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -23,6 +24,7 @@
 
   const angle = $derived(angleMode === 'custom' ? Number(customAngle) || 0 : Number(angleMode));
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; if (preview) URL.revokeObjectURL(preview); preview = ''; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the result and preview when the tool is closed
   async function load(files: File[]) {
     clear(); file = files[0]; total = 0;
     try { bytes = await readBytes(file); total = await countPages(bytes); } catch (e) { bad = true; status = pdfErrorMessage(e, file.name); }
@@ -66,7 +68,9 @@
     try {
       const first = await buildFromPages(bytes!, [{ index: 0, rotate: 0 }]);
       const r = await watermarkPdf(first, await opts());
-      const doc = await openPdf(r.bytes), blob = await toBlob(await renderPage(doc, 1, { maxSide: 520 }), 'image/jpeg', 0.8); closePdf(doc);
+      const doc = await openPdf(r.bytes);
+      let blob: Blob | null;
+      try { blob = await toBlob(await renderPage(doc, 1, { maxSide: 520 }), 'image/jpeg', 0.8); } finally { closePdf(doc); }
       if (blob) preview = URL.createObjectURL(blob);
       status = '';
     } catch (e) { bad = true; status = e instanceof RangeError ? e.message : pdfErrorMessage(e, file!.name); }

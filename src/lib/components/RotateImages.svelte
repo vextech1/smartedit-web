@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import BatchResults from './BatchResults.svelte';
   import { toBlob } from '#lib/core/image.ts';
@@ -19,6 +20,7 @@
   let view = $state<HTMLCanvasElement>();
 
   function reset() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; results = []; zip = null; status = ''; bad = false; }
+  onMount(() => () => reset());   // free the result files when the tool is closed
   async function pick(f: File[]) {
     reset(); files = f; sample = null; rot = 0; flipH = false; flipV = false;
     try { sample = await loadCanvas(f[0], PREVIEW, true); } catch { status = 'The first file could not be read as an image.'; bad = true; }

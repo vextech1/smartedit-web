@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -17,6 +18,8 @@
   let bytes: Uint8Array | null = null;
 
   function clear() { outs.forEach((o) => URL.revokeObjectURL(o.url)); if (zip) URL.revokeObjectURL(zip.url); outs = []; zip = null; status = ''; bad = false; }
+
+  onMount(() => () => clear());   // free the result files when the tool is closed
 
   async function load(files: File[]) {
     clear(); file = files[0]; total = 0;

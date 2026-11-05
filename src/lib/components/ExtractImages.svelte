@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName, fmtBytes } from '#lib/core/format.ts';
@@ -18,6 +19,7 @@
   let urls: string[] = [];
 
   function clear() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; items = []; total = 0; res = null; zip = null; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the extracted pictures when the tool is closed
   function pick(f: File[]) { clear(); file = f[0]; }
 
   async function run() {

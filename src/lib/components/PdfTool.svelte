@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { fmtBytes, scaleTo } from '#lib/core/format.ts';
@@ -17,6 +18,7 @@
   let result = $state<{ url: string; name: string; bytes: number } | null>(null);
 
   function clear() { if (result) URL.revokeObjectURL(result.url); result = null; status = ''; bad = false; }
+  onMount(() => () => { clear(); items.forEach((it) => it.thumb && URL.revokeObjectURL(it.thumb)); });   // free the result and thumbnails when the tool is closed
   function add(files: File[]) { clear(); items.push(...files.map((file) => ({ file, thumb: isImages ? URL.createObjectURL(file) : undefined }))); }
   function swap(a: number, b: number) { [items[a], items[b]] = [items[b], items[a]]; }
   function remove(i: number) { const [it] = items.splice(i, 1); if (it.thumb) URL.revokeObjectURL(it.thumb); }

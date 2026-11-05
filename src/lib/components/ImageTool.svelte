@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import { baseName, fmtBytes, scaleTo } from '#lib/core/format.ts';
   import { draw, loadBitmap, toBlob } from '#lib/core/image.ts';
@@ -24,6 +25,7 @@
   let zip = $state<{ url: string; bytes: number } | null>(null);
 
   function reset() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; results = []; zip = null; status = ''; }
+  onMount(() => () => reset());   // free the result files when the tool is closed
   function pick(f: File[]) { reset(); files = f; }
 
   async function one(file: File): Promise<Result> {
