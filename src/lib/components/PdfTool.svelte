@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
-  import { fmtBytes, scaleTo } from '#lib/core/format.ts';
-  import { draw, loadBitmap, toBlob } from '#lib/core/image.ts';
-  import { imagesToPdf, mergePdfs, UnreadablePdfError, type JpegItem, type PageSize } from '#lib/core/pdf.ts';
+  import { fmtBytes } from '#lib/core/format.ts';
+  import { imagesToPdf, mergePdfs, UnreadablePdfError, type PageSize } from '#lib/core/pdf.ts';
+  import { picturesToJpegs } from '#lib/core/pdf-pictures.ts';
 
   let { mode }: { mode: 'images-to-pdf' | 'merge-pdf' } = $props();
   // svelte-ignore state_referenced_locally
@@ -31,15 +31,7 @@
         status = 'Merging…';
         bytes = await mergePdfs(await Promise.all(items.map(async (it) => ({ name: it.file.name, bytes: new Uint8Array(await it.file.arrayBuffer()) }))));
       } else {
-        const jpegs: JpegItem[] = [];
-        for (let i = 0; i < items.length; i++) {
-          status = `Preparing image ${i + 1} of ${items.length}…`;
-          const bmp = await loadBitmap(items[i].file);
-          const s = scaleTo(bmp.width, bmp.height, 2480);
-          const blob = await toBlob(draw(bmp, s.w, s.h, true), 'image/jpeg', 0.9);
-          bmp.close();
-          jpegs.push({ bytes: new Uint8Array(await blob!.arrayBuffer()), width: s.w, height: s.h });
-        }
+        const jpegs = await picturesToJpegs(items.map((it) => it.file), (text) => (status = text));
         status = 'Building PDF…';
         bytes = await imagesToPdf(jpegs, { size, margin });
       }

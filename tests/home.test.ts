@@ -6,12 +6,12 @@ import { ICONS } from '../src/lib/icons';
 const f = (type: string) => ({ type }) as File;
 describe('home routing', () => {
   it('sends one PDF to Organize, several to Merge', () => {
-    expect(routeFor([f('application/pdf')])).toBe('/studio/pdf?tab=organize-pdf');
-    expect(routeFor([f('application/pdf'), f('application/pdf')])).toBe('/studio/pdf?tab=merge-pdf');
+    expect(routeFor([f('application/pdf')])).toBe('/studio/document?tab=organize-pdf');
+    expect(routeFor([f('application/pdf'), f('application/pdf')])).toBe('/studio/document?tab=merge-pdf');
   });
   it('sends one image to the editor, several to Images to PDF', () => {
-    expect(routeFor([f('image/png')])).toBe('/studio/photo?tab=edit-image');
-    expect(routeFor([f('image/png'), f('image/jpeg')])).toBe('/studio/convert?tab=images-to-pdf');
+    expect(routeFor([f('image/png')])).toBe('/studio/image?tab=edit-image');
+    expect(routeFor([f('image/png'), f('image/jpeg')])).toBe('/studio/document?tab=images-to-pdf');
   });
   it('ignores unsupported files', () => { expect(routeFor([f('text/plain')])).toBeUndefined(); });
 });

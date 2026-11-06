@@ -3,13 +3,12 @@
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
-  import { toBlob } from '#lib/core/image.ts';
-  import { closePdf, openPdf, renderPage } from '#lib/core/pdf-render.ts';
+  import { pdfToPictures, type PictureFormat } from '#lib/core/pdf-pictures.ts';
   import { pdfErrorMessage, readBytes, zipBlob } from '#lib/core/files.ts';
   import { zipFiles } from '#lib/core/zip.ts';
 
   let file = $state<File | null>(null);
-  let fmt = $state<'image/jpeg' | 'image/png'>('image/jpeg');
+  let fmt = $state<PictureFormat>('image/jpeg');
   let dpi = $state(150);
   let status = $state(''); let bad = $state(false); let busy = $state(false);
   let out = $state<{ name: string; bytes: number; url: string; count: number } | null>(null);
@@ -21,21 +20,9 @@
   async function run() {
     clear(); busy = true;
     try {
-      const doc = await openPdf(await readBytes(file!));
-      const ext = fmt === 'image/png' ? 'png' : 'jpg', base = baseName(file!.name), pad = String(doc.numPages).length;
-      const files: { name: string; bytes: Uint8Array }[] = [];
-      try {
-        for (let i = 1; i <= doc.numPages; i++) {
-          status = `Converting page ${i} of ${doc.numPages}…`;
-          const canvas = await renderPage(doc, i, { scale: dpi / 72 });
-          const blob = await toBlob(canvas, fmt, 0.9);
-          canvas.width = canvas.height = 0; // free the pixels right away
-          if (!blob) throw new Error('encode failed');
-          files.push({ name: `${base}-page-${String(i).padStart(pad, '0')}.${ext}`, bytes: new Uint8Array(await blob.arrayBuffer()) });
-        }
-      } finally { closePdf(doc); }
+      const files = await pdfToPictures(await readBytes(file!), file!.name, fmt, dpi, (text) => (status = text));
       const z = zipFiles(files);
-      out = { name: `${base}-images.zip`, bytes: z.length, url: URL.createObjectURL(zipBlob(z)), count: files.length };
+      out = { name: `${baseName(file!.name)}-images.zip`, bytes: z.length, url: URL.createObjectURL(zipBlob(z)), count: files.length };
       status = `Done. ${files.length} ${files.length === 1 ? 'image' : 'images'} in the ZIP.`;
     } catch (e) { bad = true; status = pdfErrorMessage(e, file!.name); }
     busy = false;

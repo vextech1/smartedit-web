@@ -83,7 +83,7 @@ describe('export formats', () => {
 
 describe('photo tabs that open sheets', () => {
   const tabs = workspaceById('photo')!.tabs as readonly string[];
-  it('only names real Photo Studio tabs, and never the editor’s own tab', () => {
+  it('only names real Image Studio tabs, and never the editor’s own tab', () => {
     for (const slug of Object.keys(TAB_SHEET)) expect(tabs).toContain(slug);
     expect(Object.keys(TAB_SHEET)).not.toContain('edit-image');
   });

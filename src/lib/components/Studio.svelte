@@ -11,10 +11,11 @@
   import { toolBySlug } from '#lib/tools.ts';
   import { getSessions, daysLeft, type SessionMeta } from '#lib/core/session.ts';
   import { getRetentionDays } from '#lib/core/settings.ts';
-  import { setPending, ago } from '#lib/core/handoff.ts';
+  import { setPending, peekPending, ago } from '#lib/core/handoff.ts';
   import { fmtBytes } from '#lib/core/format.ts';
   import { activeWork, workUsage, UNSAVED_WARNING } from '#lib/active.svelte.ts';
-  import { fileKind, studioHref, tabInput, workspaceSupports, unsupportedNote, type Workspace, type WorkspaceId } from '#lib/core/workspaces.ts';
+  import { fileKind, studioHref, tabInput, toolSupports, workspaceSupports, unsupportedNote, type Workspace, type WorkspaceId } from '#lib/core/workspaces.ts';
+  import { PDF_DOCK } from '#lib/core/pdf-studio.ts';
 
   let { workspace }: { workspace: Workspace } = $props();
   // The page re-creates this component for another studio, so the first value is the right one.
@@ -38,15 +39,15 @@
   let booted = $state(false);
 
   const kind = $derived(st.file ? fileKind(st.file.type) : undefined);
-  // Photo Studio with a photo open uses the full-screen editor (stage, dock, bottom sheets) instead of the tab bar.
-  const editor = $derived(ws.id === 'photo' && kind === 'image');
-  const pdfEditor = $derived(ws.id === 'pdf' && kind === 'pdf');
+  // Image Studio with an image open uses the full-screen editor instead of the tab bar.
+  const editor = $derived(ws.id === 'image' && kind === 'image');
+  const pdfEditor = $derived(ws.id === 'document' && kind === 'pdf' && PDF_DOCK.some((item) => item.tool === active));
   const showTool = $derived(!!st.file || (standalone && !!ws.startsEmpty?.includes(active)));
   const left = $derived(st.session ? daysLeft(st.session, retention) : undefined);
   const accepts = (k: Parameters<typeof workspaceSupports>[1]) => workspaceSupports(ws, k);
   // The open work (from another studio) is a kind of file this studio has no tool for.
   const blocked = $derived(!st.file && activeWork.work && !workspaceSupports(ws, activeWork.work.kind) ? activeWork.work : undefined);
-  const startLabel = ws.accept === 'application/pdf' ? 'Choose a PDF' : ws.accept === 'image/*' ? 'Choose a photo' : 'Choose a PDF or pictures';
+  const startLabel = ws.accept === 'application/pdf' ? 'Choose a PDF' : ws.accept === 'image/*' ? 'Choose an image' : 'Choose a PDF or pictures';
 
   const here = () => goto(studioHref(ws.id, active, st.session?.id), { replace: true, reset: false });
   function pick(slug: string) {
@@ -59,7 +60,7 @@
   }
   /** After a file opens, land on a tab that can take it. */
   function settle() {
-    const fits = ws.tabs.filter((s) => !kind || tabInput(s) === kind);
+    const fits = ws.tabs.filter((s) => toolSupports(s, kind));
     pick(fits.includes(active) ? active : (fits[0] ?? active));
   }
   async function refresh() {
@@ -86,9 +87,12 @@
     if (sid) { if (!(await st.load(sid, accepts))) notice = 'That work is not available here. It may have expired, been cleared, or be a kind of file this studio cannot open.'; }
     else {
       // No work named in the address: carry on with the open work if one of this studio's tools can take it.
-      await activeWork.hydrate();
-      const a = activeWork.work;
-      if (a && accepts(a.kind)) await st.load(a.id, accepts);
+      // Files the person has just picked (on Home, say) are new work, so they are not swallowed by older work.
+      if (!peekPending().length) {
+        await activeWork.hydrate();
+        const a = activeWork.work;
+        if (a && accepts(a.kind)) await st.load(a.id, accepts);
+      }
     }
     await refresh();
     if (st.file) settle();
@@ -182,7 +186,7 @@
   <div class="studiotabs" role="tablist" aria-label="{ws.title} tools">
     {#each ws.tabs as slug (slug)}
       {@const t = toolBySlug(slug)}
-      {@const off = !!kind && tabInput(slug) !== kind}
+      {@const off = !toolSupports(slug, kind)}
       {#if t && (st.file || ws.startsEmpty?.includes(slug))}
         <button type="button" role="tab" aria-selected={active === slug} class:on={active === slug} disabled={off}
           title={off ? `Needs ${tabInput(slug) === 'pdf' ? 'a PDF' : 'a picture'}` : t.short} onclick={() => pick(slug)}>{t.tile}</button>

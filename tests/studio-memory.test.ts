@@ -5,7 +5,7 @@ import { StudioState } from '../src/lib/workspace.svelte';
 
 describe('studio without browser storage', () => {
   it('keeps the file in memory, warns, and still takes results', async () => {
-    const st = new StudioState('pdf');
+    const st = new StudioState('document');
     await st.open(new File(['A'], 'r.pdf', { type: 'application/pdf' }));
     expect(st.memoryOnly).toBe(true); expect(st.session).toBeUndefined(); expect(st.note).toMatch(/cannot keep/);
     const h0 = st.head; expect(h0).toBeTruthy();

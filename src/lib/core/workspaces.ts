@@ -2,7 +2,10 @@
 // downloading and re-picking. Every tool slug belongs to exactly one workspace (checked in tests).
 import { toolBySlug } from '../tools.ts';
 
-export type WorkspaceId = 'pdf' | 'photo' | 'convert' | 'docs';
+export type WorkspaceId = 'image' | 'document';
+/** Studios that no longer exist, and where their tools went. Saved work and old links may still name them. */
+const RETIRED: Readonly<Record<string, WorkspaceId>> = { convert: 'document', pdf: 'document', docs: 'document', photo: 'image' };
+export const currentWorkspaceId = (id: string): string => RETIRED[id] ?? id;
 export interface Workspace {
   id: WorkspaceId;
   title: string;
@@ -17,26 +20,21 @@ export interface Workspace {
 }
 
 export const workspaces: Workspace[] = [
-  { id: 'pdf', title: 'PDF Studio', short: 'Edit, stamp and shrink one PDF.',
-    intro: 'Open a PDF once, then reorder pages, crop, number, watermark and compress it step by step. Every step is saved, so you can undo.',
-    accept: 'application/pdf',
-    tabs: ['organize-pdf', 'merge-pdf', 'split-pdf', 'crop-pdf', 'page-numbers', 'watermark-pdf', 'pdf-metadata', 'compress-pdf'] },
-  { id: 'photo', title: 'Photo Studio', short: 'Fix, mark and export a photo.',
-    intro: 'Open a photo once, then edit, resize, mark, frame and compress it. Every step is saved, so you can undo.',
+  { id: 'image', title: 'Image Studio', short: 'Edit, arrange and export images.',
+    intro: 'Open an image once, then edit, resize, mark, frame and compress it. Every step is saved, so you can undo.',
     accept: 'image/*',
     tabs: ['edit-image', 'rotate-images', 'resize-image', 'round-image', 'annotate-image', 'redact-image', 'watermark-image',
       'photo-frames', 'collage-images', 'compress-image', 'convert-image', 'color-picker'] },
-  { id: 'convert', title: 'Convert & Extract', short: 'Move between PDFs and pictures.',
-    intro: 'Turn pictures into a PDF, pages into pictures, or pull the pictures out of a PDF.',
+  { id: 'document', title: 'Document Studio', short: 'Scan, edit and convert documents.',
+    intro: 'Open a PDF or picture once, then scan, organize, convert and extract text from your documents. Every step is saved, so you can undo.',
     accept: 'application/pdf,image/*',
-    tabs: ['images-to-pdf', 'pdf-to-images', 'extract-images'] },
-  { id: 'docs', title: 'Scan & Documents', short: 'Scan paper, read text, make Word files.',
-    intro: 'Scan pages, read their text, and turn PDFs into Word or plain text, all from the same file.',
-    accept: 'application/pdf,image/*',
-    tabs: ['scan-document', 'extract-text', 'pdf-to-docx', 'pdf-to-text'], startsEmpty: ['scan-document'] }
+    // Keep the PDF tools in PDF editor dock order, followed by scan and extraction tools.
+    tabs: ['organize-pdf', 'merge-pdf', 'split-pdf', 'images-to-pdf', 'crop-pdf', 'page-numbers', 'watermark-pdf', 'pdf-metadata', 'compress-pdf',
+      'pdf-to-images', 'extract-images', 'scan-document', 'extract-text', 'pdf-to-docx', 'pdf-to-text'],
+    startsEmpty: ['images-to-pdf', 'scan-document'] }
 ];
 
-export const workspaceById = (id: string) => workspaces.find((w) => w.id === id);
+export const workspaceById = (id: string) => workspaces.find((w) => w.id === currentWorkspaceId(id));
 export const workspaceFor = (slug: string) => workspaces.find((w) => w.tabs.includes(slug));
 
 /** The kind of working file a type of file makes: PDFs and pictures only. */
@@ -54,22 +52,24 @@ const INPUT: Record<string, FileKind> = {
   'scan-document': 'image', 'extract-text': 'image', 'pdf-to-docx': 'pdf', 'pdf-to-text': 'pdf'
 };
 /** The kind of working file a tab takes as input. */
-export const tabInput = (slug: string): FileKind => INPUT[slug] ?? (workspaceFor(slug)?.id === 'photo' ? 'image' : 'pdf');
+export const tabInput = (slug: string): FileKind => INPUT[slug] ?? (workspaceFor(slug)?.id === 'image' ? 'image' : 'pdf');
 
+// Tools that also work on a second kind of file. Images to PDF adds its pictures to an open PDF as new pages.
+const ALSO: Record<string, FileKind> = { 'images-to-pdf': 'pdf' };
 /** Whether a tool can take a file of this kind. With no file open, every tool is available. */
-export const toolSupports = (slug: string, kind: FileKind | undefined): boolean => !kind || tabInput(slug) === kind;
+export const toolSupports = (slug: string, kind: FileKind | undefined): boolean => !kind || tabInput(slug) === kind || ALSO[slug] === kind;
 /** Whether any tool in a studio can take a file of this kind. */
 export const workspaceSupports = (w: Workspace, kind: FileKind | undefined): boolean => !kind || w.tabs.some((s) => toolSupports(s, kind));
 /** Short reason shown on a greyed-out tool. */
 export const unsupportedNote = (kind: FileKind | undefined): string => (kind === 'pdf' ? 'Not supported for a PDF' : 'Not supported for a picture');
 
 /** Link to a studio, optionally on a tab and for an open session. */
-export function studioHref(workspace: WorkspaceId, tab?: string, session?: string): string {
+export function studioHref(workspace: string, tab?: string, session?: string): string {
   const q = new URLSearchParams();
   if (tab) q.set('tab', tab);
   if (session) q.set('s', session);
   const s = q.toString();
-  return `/studio/${workspace}${s ? `?${s}` : ''}`;
+  return `/studio/${currentWorkspaceId(workspace)}${s ? `?${s}` : ''}`;
 }
 /** Link to the studio tab that holds a tool, or to the tool's own page if it somehow has no studio. */
 export function toolHref(slug: string, session?: string): string {

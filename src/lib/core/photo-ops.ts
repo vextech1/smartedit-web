@@ -49,7 +49,7 @@ export function limitSide(w: number, h: number, side: number) { return side > 0 
 export const fmtLabel = (type: string) => FORMATS.find((f) => f.id === type)?.label ?? 'PNG';
 
 // ---------- which photo tab opens which sheet ----------
-/** Photo Studio tabs that now live in the editor as sheets (slug → sheet). The batch tools (Rotate several, Collage, Compress, Convert, Colour Picker) stay as panels. */
+/** Image Studio tabs that now live in the editor as sheets (slug → sheet). The batch tools (Rotate several, Collage, Compress, Convert, Colour Picker) stay as panels. */
 export const TAB_SHEET = { 'resize-image': 'resize', 'round-image': 'round', 'annotate-image': 'markup', 'redact-image': 'hide', 'watermark-image': 'watermark', 'photo-frames': 'frames' } as const;
 export const SHEETS = ['resize', 'round', 'markup', 'hide', 'watermark', 'frames', 'export'] as const;
 /** Batch or inspection tools stay in the dock's More panel instead of replacing the current photo. */

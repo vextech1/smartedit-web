@@ -20,15 +20,27 @@ export function layout(size: PageSize, margin: number, w: number, h: number): Pa
 
 export interface JpegItem { bytes: Uint8Array; width: number; height: number }
 
-export async function imagesToPdf(items: JpegItem[], opts: { size: PageSize; margin: number }): Promise<Uint8Array> {
-  const { PDFDocument } = await import('pdf-lib');
-  const doc = await PDFDocument.create();
+async function addImagePages(doc: import('pdf-lib').PDFDocument, items: JpegItem[], opts: { size: PageSize; margin: number }): Promise<void> {
   for (const it of items) {
     // Copy to a standalone array: pdf-lib misreads views that don't start at offset 0.
     const img = await doc.embedJpg(new Uint8Array(it.bytes));
     const L = layout(opts.size, opts.margin, it.width, it.height);
     doc.addPage([L.pw, L.ph]).drawImage(img, { x: L.x, y: L.y, width: L.dw, height: L.dh });
   }
+}
+
+export async function imagesToPdf(items: JpegItem[], opts: { size: PageSize; margin: number }): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.create();
+  await addImagePages(doc, items, opts);
+  return doc.save();
+}
+
+/** The same pages as `imagesToPdf`, added after the last page of an existing PDF. The PDF is edited, not rebuilt, so its pages, title and author stay as they were. */
+export async function appendImages(source: Uint8Array, items: JpegItem[], opts: { size: PageSize; margin: number }): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.load(new Uint8Array(source), { updateMetadata: false });
+  await addImagePages(doc, items, opts);
   return doc.save();
 }
 

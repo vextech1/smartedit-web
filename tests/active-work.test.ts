@@ -21,15 +21,14 @@ describe('which tools suit which file', () => {
     expect(toolSupports('pdf-to-docx', 'pdf')).toBe(true);
     expect(toolSupports('extract-text', 'pdf')).toBe(false);
     expect(toolSupports('images-to-pdf', 'image')).toBe(true);
+    expect(toolSupports('images-to-pdf', 'pdf')).toBe(true);   // adds the pictures to an open PDF
     expect(toolSupports('organize-pdf', 'image')).toBe(false);
     for (const t of workspaces.flatMap((w) => w.tabs)) expect(toolSupports(t, undefined)).toBe(true);
   });
   it('a studio is supported when any of its tools can take the file', () => {
-    expect(workspaceSupports(workspaceById('pdf')!, 'pdf')).toBe(true);
-    expect(workspaceSupports(workspaceById('pdf')!, 'image')).toBe(false);
-    expect(workspaceSupports(workspaceById('photo')!, 'pdf')).toBe(false);
-    expect(workspaceSupports(workspaceById('convert')!, 'pdf') && workspaceSupports(workspaceById('convert')!, 'image')).toBe(true);
-    expect(workspaceSupports(workspaceById('docs')!, 'pdf') && workspaceSupports(workspaceById('docs')!, 'image')).toBe(true);
+    expect(workspaceSupports(workspaceById('document')!, 'pdf')).toBe(true);
+    expect(workspaceSupports(workspaceById('document')!, 'image')).toBe(true);
+    expect(workspaceSupports(workspaceById('image')!, 'pdf')).toBe(false);
   });
 });
 
@@ -44,54 +43,62 @@ describe('remembering the open work', () => {
 
 describe('open work follows the person across studios', () => {
   it('opening a file makes it the open work, with its edits saved as versions', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A'));
-    expect(activeWork.work).toMatchObject({ id: a.session!.id, kind: 'pdf', workspace: 'pdf' });
+    const a = new StudioState('document'); await a.open(pdf('A'));
+    expect(activeWork.work).toMatchObject({ id: a.session!.id, kind: 'pdf', workspace: 'document' });
     await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r-crop.pdf');
     expect(activeWork.work!.name).toBe('r-crop.pdf');
   });
-  it('another studio that has a tool for it opens the same file at the same edit, and Continue moves there', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A'));
+  it('Document Studio resumes the same file and continues its version chain', async () => {
+    const a = new StudioState('document'); await a.open(pdf('A'));
     await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r-crop.pdf');
     const id = a.session!.id;
-    const docs = new StudioState('docs');
-    expect(await docs.load(id, (k) => workspaceSupports(workspaceById('docs')!, k))).toBe(true);
+    const docs = new StudioState('document');
+    expect(await docs.load(id, (k) => workspaceSupports(workspaceById('document')!, k))).toBe(true);
     expect(await docs.file!.text()).toBe('B'); expect(docs.session!.versions).toHaveLength(2);
-    expect((await getSessions().get(id))!.workspace).toBe('docs');
+    expect((await getSessions().get(id))!.workspace).toBe('document');
     // an edit made there is on the same chain, so the first studio sees it too
     await docs.commit(new Blob(['C'], { type: 'application/pdf' }), 'Compress', 'r-compress.pdf');
-    const back = new StudioState('pdf'); await back.load(id);
+    const back = new StudioState('document'); await back.load(id);
     expect(await back.file!.text()).toBe('C'); expect(back.session!.versions).toHaveLength(3);
   });
   it('keeps an undo: a version the person stepped back from is not what the next studio opens', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A'));
+    const a = new StudioState('document'); await a.open(pdf('A'));
     await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r2.pdf'); await a.undo();
-    const b = new StudioState('convert'); await b.load(a.session!.id);
+    const b = new StudioState('document'); await b.load(a.session!.id);
     expect(await b.file!.text()).toBe('A'); expect(b.canRedo).toBe(true);
   });
   it('a studio with no tool for the file refuses it and leaves the open work alone', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A'));
-    const photo = new StudioState('photo');
-    expect(await photo.load(a.session!.id, (k) => workspaceSupports(workspaceById('photo')!, k))).toBe(false);
-    expect(photo.file).toBeUndefined(); expect(activeWork.work!.id).toBe(a.session!.id);
-    expect((await getSessions().get(a.session!.id))!.workspace).toBe('pdf');
+    const a = new StudioState('document'); await a.open(pdf('A'));
+    const image = new StudioState('image');
+    expect(await image.load(a.session!.id, (k) => workspaceSupports(workspaceById('image')!, k))).toBe(false);
+    expect(image.file).toBeUndefined(); expect(activeWork.work!.id).toBe(a.session!.id);
+    expect((await getSessions().get(a.session!.id))!.workspace).toBe('document');
   });
   it('closing clears the open work but keeps the session to continue later; starting another file replaces it', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A')); const id = a.session!.id;
+    const a = new StudioState('document'); await a.open(pdf('A')); const id = a.session!.id;
     a.close(); expect(activeWork.work).toBeUndefined(); expect(await getSessions().get(id)).toBeDefined();
-    const b = new StudioState('photo'); await b.open(png('P'));
+    const b = new StudioState('image'); await b.open(png('P'));
     expect(activeWork.work!.id).toBe(b.session!.id); expect(activeWork.work!.kind).toBe('image');
     await a.load(id); expect(activeWork.work!.id).toBe(id);   // Continue makes it the open work again
   });
   it('discarding the open work forgets it everywhere', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A')); const id = a.session!.id;
+    const a = new StudioState('document'); await a.open(pdf('A')); const id = a.session!.id;
     await a.discard(); expect(activeWork.work).toBeUndefined(); expect(await getSessions().get(id)).toBeUndefined();
   });
   it('sending a result to a tool in another studio makes it the open work', async () => {
     await sendToTool(new Blob(['X'], { type: 'application/pdf' }), 'x.pdf', 'pdf-to-docx');
-    expect(activeWork.work).toMatchObject({ kind: 'pdf', workspace: 'docs' });
+    expect(activeWork.work).toMatchObject({ kind: 'pdf', workspace: 'document' });
+  });
+  it('moves legacy saved workspace IDs to the canonical studio when opened', async () => {
+    for (const [legacyId, file] of [['pdf', pdf('A')], ['docs', pdf('B')], ['convert', pdf('C')], ['photo', png('D')]] as const) {
+      const session = await getSessions().start(legacyId, file, file.name);
+      const workspace = new StudioState(legacyId === 'photo' ? 'image' : 'document');
+      expect(await workspace.load(session.id)).toBe(true);
+      expect((await getSessions().get(session.id))!.workspace).toBe(legacyId === 'photo' ? 'image' : 'document');
+    }
   });
   it('refresh forgets work that was deleted or expired', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A'));
+    const a = new StudioState('document'); await a.open(pdf('A'));
     await getSessions().discard(a.session!.id); await activeWork.refresh();
     expect(activeWork.work).toBeUndefined();
   });

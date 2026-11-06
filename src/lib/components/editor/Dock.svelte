@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   // The bottom row of tools: icon above label, scrolls sideways when there are more than fit.
-  let { items, onpick, label = 'Photo tools' }: { items: { id: string; label: string; icon: string; disabled?: boolean }[]; onpick: (id: string) => void; label?: string } = $props();
+  let { items, onpick, label = 'Image tools' }: { items: readonly { id: string; label: string; icon: string; disabled?: boolean }[]; onpick: (id: string) => void; label?: string } = $props();
 </script>
 <nav class="dock" aria-label={label}>
   <div class="items" role="toolbar" aria-label={label}>

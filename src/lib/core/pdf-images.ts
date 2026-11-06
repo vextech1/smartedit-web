@@ -10,6 +10,14 @@ export interface ExtractResult {
 }
 export interface ExtractOptions { baseName?: string; minSize?: number; maxImages?: number }
 export const MAX_IMAGES = 500;
+/** What an extraction left out, in a sentence ("Skipped: 2 tiny images (icons or lines)."), or '' when nothing was left out. */
+export function skippedSummary(r: ExtractResult): string {
+  const s: string[] = [];
+  if (r.skipped.tiny) s.push(`${r.skipped.tiny} tiny ${r.skipped.tiny === 1 ? 'image' : 'images'} (icons or lines)`);
+  if (r.skipped.masks) s.push(`${r.skipped.masks} stencil ${r.skipped.masks === 1 ? 'mask' : 'masks'}`);
+  if (r.skipped.unsupported) s.push(`${r.skipped.unsupported} ${r.skipped.unsupported === 1 ? 'picture' : 'pictures'} in a format that can’t be extracted`);
+  return s.length ? `Skipped: ${s.join(', ')}.` : '';
+}
 const MAX_PIXELS = 100_000_000;
 
 // ---- PNG encoder --------------------------------------------------------------------------------------------------

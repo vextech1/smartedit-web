@@ -4,16 +4,16 @@
 
 **Goal.** Load a file once, keep it in a *session*, and let every tool work on that same session. Nothing is uploaded and there are no accounts (see `ARCHITECTURE.md`).
 
-## 1. Four workspaces (every tool belongs to exactly one)
+## 1. Two studios (every tool belongs to exactly one)
+
+*Image Studio contains the 12 picture tools. Document Studio contains all 11 PDF tools plus Scan, Extract text, PDF to Word and PDF to Text. Old IDs remain aliases: `photo` opens Image Studio; `pdf`, `docs` and `convert` open Document Studio.*
 
 | Workspace | Working file | Tabs (tool slugs, in workflow order) |
 |---|---|---|
-| **PDF Studio** | PDF in, PDF out | organize-pdf, merge-pdf, split-pdf, crop-pdf, page-numbers, watermark-pdf, pdf-metadata, compress-pdf |
-| **Photo Studio** | image in, image out | edit-image, rotate-images, resize-image, round-image, annotate-image, redact-image, watermark-image, photo-frames, collage-images, compress-image, convert-image, color-picker |
-| **Convert & Extract** | changes the file type | images-to-pdf, pdf-to-images, extract-images |
-| **Scan & Documents** | paper or PDF to text | scan-document, extract-text, pdf-to-docx, pdf-to-text |
+| **Image Studio** | image in, image out | edit-image, rotate-images, resize-image, round-image, annotate-image, redact-image, watermark-image, photo-frames, collage-images, compress-image, convert-image, color-picker |
+| **Document Studio** | PDF or image in; PDF, image, Word or text out | organize-pdf, merge-pdf, split-pdf, images-to-pdf, crop-pdf, page-numbers, watermark-pdf, pdf-metadata, compress-pdf, pdf-to-images, extract-images, scan-document, extract-text, pdf-to-docx, pdf-to-text |
 
-Scan stays inside *Scan & Documents* because it is one tool and always leads to PDF, OCR or Word.
+Document Studio accepts PDFs and images; each tab remains restricted to its supported input kind. Images to PDF and Scan can start without an open file.
 The standalone `/tools/<slug>` pages stay (search landing pages, sitemap, SEO). Each links to its studio.
 
 ## 2. Session layer (`core/session.ts`)

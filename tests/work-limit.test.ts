@@ -53,7 +53,7 @@ describe('when unfinished work is full, other activity carries on but is not sav
 
   it('keeps an edit that does not fit in memory, warns, and still lets the person undo it', async () => {
     setLimit(10);
-    const st = new StudioState('pdf'); await st.open(pdf('AAAA'));
+    const st = new StudioState('document'); await st.open(pdf('AAAA'));
     expect(st.memoryOnly).toBe(false);
     const h0 = st.head;
     expect(await st.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf')).toBe(true);
@@ -64,11 +64,11 @@ describe('when unfinished work is full, other activity carries on but is not sav
     await st.undo();
     expect(st.unsaved).toBe(false); expect(await st.file!.text()).toBe('AAAA'); expect(st.note).toBe(''); expect(st.head).toBe(h0);
   });
-  it('the unsaved change follows the person into another studio, and a closing warning protects it', async () => {
+  it('the unsaved change follows the person when work is resumed, and a closing warning protects it', async () => {
     setLimit(10);
-    const a = new StudioState('pdf'); await a.open(pdf('AAAA'));
+    const a = new StudioState('document'); await a.open(pdf('AAAA'));
     await a.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf');
-    const b = new StudioState('docs'); expect(await b.load(a.session!.id)).toBe(true);
+    const b = new StudioState('document'); expect(await b.load(a.session!.id)).toBe(true);
     expect(b.unsaved).toBe(true); expect(await b.file!.text()).toBe('BBBBBBB');
     const ask = vi.fn(() => false); vi.stubGlobal('confirm', ask);
     expect(activeWork.release()).toBe(false); expect(ask).toHaveBeenCalled(); expect(activeWork.work).toBeDefined();   // stayed
@@ -77,7 +77,7 @@ describe('when unfinished work is full, other activity carries on but is not sav
   });
   it('saves again, with the unsaved change as a new version, once there is room', async () => {
     setLimit(10);
-    const st = new StudioState('pdf'); await st.open(pdf('AAAA'));
+    const st = new StudioState('document'); await st.open(pdf('AAAA'));
     await st.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf'); expect(st.unsaved).toBe(true);
     setLimit(100);                                                  // the person made room
     expect(await st.commit(blob('CCCCCCC'), 'Stamp', 'r-stamp.pdf')).toBe(true);
@@ -86,15 +86,15 @@ describe('when unfinished work is full, other activity carries on but is not sav
   });
   it('a new file that does not fit is used from memory, with a warning, and does not replace the open work', async () => {
     setLimit(10);
-    const first = new StudioState('pdf'); await first.open(pdf('AAAAAAAA')); const openId = activeWork.work!.id;
-    const next = new StudioState('pdf'); await next.open(pdf('BBBBBBBB', 'b.pdf'));
+    const first = new StudioState('document'); await first.open(pdf('AAAAAAAA')); const openId = activeWork.work!.id;
+    const next = new StudioState('document'); await next.open(pdf('BBBBBBBB', 'b.pdf'));
     expect(next.memoryOnly).toBe(true); expect(next.session).toBeUndefined(); expect(next.note).toBe(FULL_OPEN_NOTE);
     expect(await next.file!.text()).toBe('BBBBBBBB'); expect(activeWork.work!.id).toBe(openId);
     expect(await getSessions().list()).toHaveLength(1);
   });
   it('shows usage to the pages', async () => {
     setLimit(10);
-    const st = new StudioState('pdf'); await st.open(pdf('AAAAAAAAA')); await workUsage.refresh();
+    const st = new StudioState('document'); await st.open(pdf('AAAAAAAAA')); await workUsage.refresh();
     expect(workUsage.used).toBe(9); expect(workUsage.near).toBe(true); expect(workUsage.full).toBe(false); expect(workUsage.percent).toBe(90);
   });
 });

@@ -84,7 +84,7 @@
     const s = Math.min((stageW - PAD) / sw, (stageH - PAD) / sh, 2);
     return { w: Math.max(1, Math.floor(sw * s)), h: Math.max(1, Math.floor(sh * s)) };
   });
-  const panelSlug = $derived(st.tab && st.tab !== HOME && !(st.tab in TAB_SHEET) && workspaceById('photo')?.tabs.includes(st.tab) ? st.tab : null);
+  const panelSlug = $derived(st.tab && st.tab !== HOME && !(st.tab in TAB_SHEET) && workspaceById('image')?.tabs.includes(st.tab) ? st.tab : null);
   const panelTool = $derived(panelSlug ? toolBySlug(panelSlug) : undefined);
   const photoTools = $derived(PANEL_TOOLS.map((s) => toolBySlug(s)!).filter(Boolean));
   const zoomLabel = $derived(`${Math.round(zoom.scale * 100)}%`);

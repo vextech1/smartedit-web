@@ -6,9 +6,11 @@ import { blocksToText, blockToText, mdEscape, pdfToText } from '../src/lib/core/
 import type { PdfDocLike } from '../src/lib/core/pdf-docx';
 import type { ParagraphBlock } from '../src/lib/core/docx-writer';
 import { toolBySlug } from '../src/lib/tools';
-import { initialPages, movePage, pageIndex, removePage, rotatePage } from '../src/lib/core/pdf-studio';
+import { initialPages, movePage, pageIndex, PDF_DOCK, PDF_TAB_SHEET, removePage, rotatePage } from '../src/lib/core/pdf-studio';
+import { tools } from '../src/lib/tools';
+import { workspaceById } from '../src/lib/core/workspaces';
 
-describe('PDF Studio page state', () => {
+describe('Document Studio PDF editor state', () => {
   it('creates a page sequence and clamps page navigation', () => {
     expect(initialPages(3)).toEqual([{ index: 0, rotate: 0 }, { index: 1, rotate: 0 }, { index: 2, rotate: 0 }]);
     expect(pageIndex(-4, 3)).toBe(0); expect(pageIndex(9, 3)).toBe(2); expect(pageIndex(0, 0)).toBe(0);
@@ -266,5 +268,42 @@ describe('text and markdown', () => {
 describe('registry', () => {
   it('lists the new tools', () => {
     for (const s of ['pdf-to-text', 'pdf-metadata', 'crop-pdf']) expect(toolBySlug(s), s).toBeTruthy();
+  });
+});
+
+describe('PDF editor dock', () => {
+  it('has one button for every PDF tool, in the same order as the Document Studio PDF tabs', () => {
+    const pdfTools = tools.filter((t) => t.category === 'PDF').map((t) => t.slug);
+    expect(PDF_DOCK.map((d) => d.tool).sort()).toEqual([...pdfTools].sort());
+    expect(PDF_DOCK.map((d) => d.tool)).toEqual(workspaceById('document')!.tabs.filter((slug) => pdfTools.includes(slug)));
+    expect(new Set(PDF_DOCK.map((d) => d.id)).size).toBe(PDF_DOCK.length);
+  });
+  it('opens the matching sheet for every tab except Organize, which is the editor\'s home view', () => {
+    for (const d of PDF_DOCK) expect(PDF_TAB_SHEET[d.tool]).toBe(d.tool === 'organize-pdf' ? undefined : d.id);
+  });
+});
+
+describe('Add images to a PDF', () => {
+  it('adds pages after the last one and keeps the PDF\'s own pages and details', async () => {
+    const { appendImages } = await import('../src/lib/core/pdf');
+    const { createRequire } = await import('node:module');
+    const { JPEG_40x20 } = createRequire(import.meta.url)('./fixtures.cjs');
+    const base = await PDFDocument.create(); base.addPage([300, 200]); base.addPage([300, 200]); base.setTitle('Kept title'); base.setAuthor('Kept author');
+    const jpg = new Uint8Array(Buffer.from(JPEG_40x20, 'base64'));
+    const out = await PDFDocument.load(await appendImages(await base.save(), [{ bytes: jpg, width: 40, height: 20 }, { bytes: jpg, width: 40, height: 20 }], { size: 'a4', margin: 0 }), { updateMetadata: false });
+    expect(out.getPageCount()).toBe(4);
+    expect(out.getPage(0).getSize()).toEqual({ width: 300, height: 200 });
+    expect(out.getPage(2).getSize().width).toBeCloseTo(841.89, 1);   // 40x20 is landscape, so A4 turns on its side
+    expect(out.getTitle()).toBe('Kept title'); expect(out.getAuthor()).toBe('Kept author');
+  });
+});
+
+describe('skipped summary', () => {
+  it('says what an extraction left out, or nothing', async () => {
+    const { skippedSummary } = await import('../src/lib/core/pdf-images');
+    const r = (tiny: number, masks: number, unsupported: number) => ({ images: [], pages: 1, truncated: false, skipped: { tiny, masks, unsupported } });
+    expect(skippedSummary(r(0, 0, 0))).toBe('');
+    expect(skippedSummary(r(1, 0, 0))).toBe('Skipped: 1 tiny image (icons or lines).');
+    expect(skippedSummary(r(2, 1, 3))).toBe('Skipped: 2 tiny images (icons or lines), 1 stencil mask, 3 pictures in a format that can’t be extracted.');
   });
 });

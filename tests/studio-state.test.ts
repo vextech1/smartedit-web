@@ -33,7 +33,7 @@ describe('IndexedDB session store', () => {
 
 describe('studio state', () => {
   it('commits a result, changes the head, and walks back and forward', async () => {
-    const st = new StudioState('pdf'); await st.open(pdf('A')); const h0 = st.head;
+    const st = new StudioState('document'); await st.open(pdf('A')); const h0 = st.head;
     expect(await st.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop PDF', 'r-crop.pdf')).toBe(true);
     expect(st.head).not.toBe(h0); expect(await st.file!.text()).toBe('B'); expect(st.file!.name).toBe('r-crop.pdf'); expect(st.canUndo).toBe(true);
     await st.undo(); expect(st.head).toBe(h0); expect(await st.file!.text()).toBe('A'); expect(st.canRedo).toBe(true);
@@ -42,18 +42,18 @@ describe('studio state', () => {
     expect(st.session?.versions).toHaveLength(2);
   });
   it('rejects a result of another kind and keeps the file', async () => {
-    const st = new StudioState('pdf'); await st.open(pdf('A'));
+    const st = new StudioState('document'); await st.open(pdf('A'));
     await expect(st.commit(png('P'), 'x')).rejects.toThrow(); expect(await st.file!.text()).toBe('A');
   });
   it('resumes a session by id (as after leaving and coming back)', async () => {
-    const a = new StudioState('pdf'); await a.open(pdf('A')); await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop');
+    const a = new StudioState('document'); await a.open(pdf('A')); await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop');
     const id = a.session!.id;
-    const b = new StudioState('pdf'); expect(await b.load(id)).toBe(true);
+    const b = new StudioState('document'); expect(await b.load(id)).toBe(true);
     expect(await b.file!.text()).toBe('B'); expect(b.session?.versions.map((v) => v.label)).toEqual(['Original', 'Crop']);
-    expect(await new StudioState('pdf').load('missing')).toBe(false);
+    expect(await new StudioState('document').load('missing')).toBe(false);
   });
   it('pins, saves a copy to My Files, closes and discards', async () => {
-    const st = new StudioState('pdf'); await st.open(pdf('A', 'keep.pdf'));
+    const st = new StudioState('document'); await st.open(pdf('A', 'keep.pdf'));
     await st.togglePin(); expect(st.session?.pinned).toBe(true); await st.togglePin(); expect(st.session?.pinned).toBeUndefined();
     expect(await st.saveToLibrary()).toBe(true); expect((await getLibrary().list()).map((f) => f.name)).toEqual(['keep.pdf']);
     const id = st.session!.id; st.close(); expect(st.file).toBeUndefined(); expect(await getSessions().get(id)).toBeDefined();   // closing keeps the work
@@ -61,8 +61,8 @@ describe('studio state', () => {
   });
   it('sendToTool starts a session in the right studio and opens the tab', async () => {
     await sendToTool(new Blob(['IMG'], { type: 'image/png' }), 'scan.png', 'edit-image');
-    const [m] = await getSessions().list('photo'); expect(m.name).toBe('scan.png');
-    expect(vi.mocked(goto)).toHaveBeenCalledWith(`/studio/photo?tab=edit-image&s=${m.id}`);
+    const [m] = await getSessions().list('image'); expect(m.name).toBe('scan.png');
+    expect(vi.mocked(goto)).toHaveBeenCalledWith(`/studio/image?tab=edit-image&s=${m.id}`);
     await sendToTool(new Blob(['x'], { type: 'application/zip' }), 'a.zip', 'edit-image'); expect(vi.mocked(goto)).toHaveBeenCalledTimes(1);   // ZIPs are ignored
   });
 });

@@ -7,9 +7,13 @@ const TTL = 15_000;
 export function routeFor(files: { type: string }[]): string | undefined {
   const pdfs = files.filter((f) => f.type === 'application/pdf').length;
   const imgs = files.filter((f) => f.type.startsWith('image/')).length;
-  if (pdfs && pdfs >= imgs) return pdfs === 1 ? studioHref('pdf', 'organize-pdf') : studioHref('pdf', 'merge-pdf');
-  if (imgs) return imgs === 1 ? studioHref('photo', 'edit-image') : studioHref('convert', 'images-to-pdf');
+  if (pdfs && pdfs >= imgs) return pdfs === 1 ? studioHref('document', 'organize-pdf') : studioHref('document', 'merge-pdf');
+  if (imgs) return imgs === 1 ? studioHref('image', 'edit-image') : studioHref('document', 'images-to-pdf');
   return undefined;
+}
+/** The waiting files the tool accepts, left waiting. Use it to find out whether the person just picked something. */
+export function peekPending(ok: (f: File) => boolean = () => true, now = Date.now()): File[] {
+  return pending && now - pending.at <= TTL ? pending.files.filter(ok) : [];
 }
 export function setPending(files: File[], now = Date.now()) { pending = { files, at: now }; }
 /** Returns (and forgets) the waiting files that the tool accepts. Anything older than 15 seconds is dropped.

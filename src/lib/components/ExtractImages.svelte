@@ -3,7 +3,7 @@
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName, fmtBytes } from '#lib/core/format.ts';
-  import { extractImages, type ExtractResult } from '#lib/core/pdf-images.ts';
+  import { extractImages, skippedSummary, type ExtractResult } from '#lib/core/pdf-images.ts';
   import { pdfErrorMessage, readBytes, zipBlob } from '#lib/core/files.ts';
   import { zipFiles } from '#lib/core/zip.ts';
 
@@ -42,13 +42,6 @@
     } catch (e) { bad = true; status = pdfErrorMessage(e, file!.name); }
     busy = false;
   }
-  const skippedText = (r: ExtractResult) => {
-    const s: string[] = [];
-    if (r.skipped.tiny) s.push(`${r.skipped.tiny} tiny ${r.skipped.tiny === 1 ? 'image' : 'images'} (icons or lines)`);
-    if (r.skipped.masks) s.push(`${r.skipped.masks} stencil ${r.skipped.masks === 1 ? 'mask' : 'masks'}`);
-    if (r.skipped.unsupported) s.push(`${r.skipped.unsupported} ${r.skipped.unsupported === 1 ? 'picture' : 'pictures'} in a format that can’t be extracted`);
-    return s.length ? `Skipped: ${s.join(', ')}.` : '';
-  };
 </script>
 
 <FileDrop accept="application/pdf" multiple={false} label={file ? 'Choose a different PDF' : 'Choose a PDF'} hint="Nothing is uploaded." onfiles={pick} />
@@ -60,10 +53,10 @@
 <p role="status" aria-live="polite" class:warn={bad} class:muted={!bad}>{status}</p>
 {#if res}
   {#if total === 0}
-    <p>No extractable pictures were found in this PDF. {skippedText(res)}</p>
+    <p>No extractable pictures were found in this PDF. {skippedSummary(res)}</p>
     <p class="muted">If the pages look like photos, they may be scans stored in a format that can’t be extracted. To save pages as pictures, use PDF to images.</p>
   {:else}
-    <p>Found {total} {total === 1 ? 'picture' : 'pictures'} in {res.pages} {res.pages === 1 ? 'page' : 'pages'}. {skippedText(res)}
+    <p>Found {total} {total === 1 ? 'picture' : 'pictures'} in {res.pages} {res.pages === 1 ? 'page' : 'pages'}. {skippedSummary(res)}
       {#if res.truncated} Stopped at the first {total}.{/if}</p>
     {#if zip}<div style="margin-bottom:12px"><ResultRow name={total > 1 ? 'All pictures' : zip.name} bytes={zip.bytes} url={zip.url} filename={zip.name} label={total > 1 ? 'Download all (ZIP)' : 'Download'} /></div>{/if}
     <ul class="pages">

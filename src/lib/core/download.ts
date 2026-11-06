@@ -1,4 +1,6 @@
 // Small browser helpers shared by the image tools.
+import { loadBitmap } from './image.ts';
+
 export const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 /** Start a download and return the object URL (so a Save button can reuse it). Revokes `prev`. */
 export function saveBlob(blob: Blob, filename: string, prev = ''): string {
@@ -9,7 +11,6 @@ export function saveBlob(blob: Blob, filename: string, prev = ''): string {
 }
 /** Decode a photo and copy it onto a canvas no bigger than `max` on its long side (EXIF rotation applied). Transparent areas stay transparent unless `white` is set. */
 export async function loadCanvas(file: Blob, max: number, white = false): Promise<HTMLCanvasElement> {
-  const { loadBitmap } = await import('./image.ts');
   const b = await loadBitmap(file);
   try {
     const k = Math.min(1, max / Math.max(b.width, b.height));
