@@ -2,7 +2,7 @@
 // The storage logic lives in core/session.ts (tested in Node); this file only connects it to the screen.
 import { getContext, setContext } from 'svelte';
 import { goto } from '$app/navigation';
-import { getSessions, WorkLimitError, type SessionMeta } from '#lib/core/session.ts';
+import { getSessions, WorkLimitError, type Sessions, type SessionMeta } from '#lib/core/session.ts';
 import { getLibrary, keepStorage } from '#lib/core/library.ts';
 import { setPending } from '#lib/core/handoff.ts';
 import { activeWork, workUsage } from '#lib/active.svelte.ts';
@@ -11,6 +11,9 @@ import { fileKind, studioHref, workspaceFor, type FileKind, type WorkspaceId } f
 const KEY = Symbol('studio');
 export const FULL_NOTE = 'Unfinished work is using all 100 MB, so changes are not saved automatically. Download your work, or finish and delete older work to make room.';
 export const FULL_OPEN_NOTE = 'Unfinished work is using all 100 MB, so this file is not saved automatically and undo is off. Download your results, or finish and delete older work first.';
+
+export const LOST_NOTE = 'Part of this work could not be found on this device, so it was restored to the nearest saved version.';
+export const VERSION_GONE_NOTE = 'That version is no longer saved, so it was removed from the list.';
 
 export class StudioState {
   session = $state<SessionMeta | undefined>();
@@ -36,9 +39,21 @@ export class StudioState {
   /** Whatever is open here is the open work for every other tool too. */
   private apply(meta: SessionMeta | undefined, file: File | undefined) { this.session = meta; this.file = file; if (meta) activeWork.set(meta); }
   private async reload(id: string) {
-    const s = getSessions(), m = await s.get(id), f = m && await s.file(id);
+    const s = getSessions();
+    let m = await s.get(id), f = m && await s.file(id);
+    if (m && !f) {   // the working version's bytes are gone: fall back to the nearest version that survived (or drop the empty record)
+      m = await s.heal(id); f = m && await s.file(id);
+      if (m && f) this.note = LOST_NOTE;
+    }
     if (!m || !f) return false;
     this.apply(m, f); return true;
+  }
+  /** Undo, redo or jump. If the version asked for has lost its bytes, say so and repair the list instead of doing nothing. */
+  private async move(go: (s: Sessions, id: string) => Promise<SessionMeta | undefined>) {
+    const id = this.session!.id, s = getSessions();
+    if (this.note === VERSION_GONE_NOTE) this.note = '';
+    if (!(await go(s, id))) { await s.heal(id); this.note = VERSION_GONE_NOTE; }
+    await this.reload(id);
   }
   /** Open an existing session, from any studio. Returns false if it is gone (expired or cleared) or `accepts` refuses its kind of file. */
   async load(id: string, accepts?: (kind: FileKind) => boolean): Promise<boolean> {
@@ -92,10 +107,10 @@ export class StudioState {
   }
   async undo() {
     if (this.unsaved) return this.revert();
-    if (this.session && this.canUndo) { await getSessions().undo(this.session.id); await this.reload(this.session.id); }
+    if (this.session && this.canUndo) await this.move((s, id) => s.undo(id));
   }
-  async redo() { if (this.session && this.canRedo) { await getSessions().redo(this.session.id); await this.reload(this.session.id); } }
-  async goTo(i: number) { if (this.unsaved) await this.revert(); if (this.session) { await getSessions().goTo(this.session.id, i); await this.reload(this.session.id); } }
+  async redo() { if (this.session && this.canRedo) await this.move((s, id) => s.redo(id)); }
+  async goTo(i: number) { if (this.unsaved) await this.revert(); if (this.session) await this.move((s, id) => s.goTo(id, i)); }
   async togglePin() {
     if (!this.session) return;
     await getSessions().setPinned(this.session.id, !this.session.pinned); await this.reload(this.session.id);

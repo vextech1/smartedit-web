@@ -14,9 +14,26 @@
 ## Phases and status
 1. [x] Shell, sheet and slider primitives with **Crop** (handles on the photo, aspect chips) and **Adjust** (look chips, Brightness, Contrast, Colour, Temperature, Tint). Rotate and Flip are instant dock actions. **Tools** opens every other photo tool in a panel on the same photo, so nothing was lost.
 2. [x] Port the rest into the shell: **Resize** (size presets by group, custom size and unit, fit, zoom, drag to position), **Round** (circle, rounded square, roundness, shape, zoom), **Draw & Text** (pen, arrow, box, oval, text), **Blur or Hide** (black box, pixelate, blur), **Watermark** (text or logo, position or repeat, size, visibility, turn), **Frames** (wall and phone), **Export** (format, quality, longest side, size estimate). Each is a sheet in `editor/sheets/` with a live preview, Reset and the tick. A sheet draws its preview into the editor's canvas and reports a new shape through `outDims`; it saves through `onapply`, so every result is one more version. Opening a ported tab (`?tab=resize-image` and so on) opens its sheet. The standalone `/tools/<slug>` pages still do batches.
-3. [ ] Keep the batch tools as panels (Collage, multi-photo Compress and Convert, Colour Picker); add *Replace photo*.
-4. [ ] PDF Studio on the same shell (centred page preview, dock of Pages, Crop, Stamp, Watermark, Info, Compress).
-5. [ ] Polish: pinch-zoom and pan, keyboard control for crop handles, screen-reader review, motion.
+3. [x] Batch tools stay as panels opened from the dock (**Rotate batch, Collage, Compress, Convert, Colour Picker**, listed in `PANEL_TOOLS` in `core/photo-ops.ts`) and work on the open photo. **Replace photo** (⋯ menu) swaps the photo in the editor.
+4. [x] PDF Studio on the same shell (`editor/PdfEditor.svelte`, `core/pdf-studio.ts`): a centred page preview with page switching and a dock of **Pages, Merge, Split, Crop, Stamp, Watermark, Info, Compress**. Each is a sheet with Reset and the tick, and every result is one more version, like photos. See *Merge and Split* below.
+5. [x] Polish as built: pinch-zoom and pan on the photo stage (`core/stage-gesture.ts`, zoom 1x to 6x, with a live zoom label); crop handles are focusable buttons with labels and arrow-key control (one pixel, ten with Shift) and a spoken size readout; motion respects `prefers-reduced-motion`. **Not done:** a review with a real screen reader on a phone.
+
+## Shared work and limits (added after the phases)
+- The open work follows the person between tools and pages (`core/active.ts`, `active.svelte.ts`). Only its id is remembered; the file and versions stay in `core/session.ts`.
+- Unfinished work is capped at 100 MB. Near the cap the `WorkStorage` panel lists the work so some can be finished or deleted; if the latest change cannot be saved it is kept in memory only, with a warning before leaving.
+
+## Merge and Split in the PDF editor (done)
+- **Merge** (`editor/PdfMergeSheet.svelte`): the open PDF comes first and can be moved; add up to 20 PDFs (with *Add PDFs* or *My files*), reorder with the arrows, remove the extras. The tick needs two or more and saves one merged version, so Undo works. A damaged or password-protected file is named and refused when it is added.
+- **Split** (`editor/PdfSplitSheet.svelte`): every page, or page ranges like `1-3, 5`. A split makes several files, not a version, so the parts are listed in the sheet with Save, Next and Download, plus one ZIP. The working file never changes.
+- **Ways in:** the dock; the Merge PDF, Split PDF, Crop PDF and other Tools tiles (`PDF_TAB_SHEET` in `core/pdf-studio.ts` maps each tab to its sheet); and the Home page, where several PDFs picked together open the Merge sheet with all of them. (Before this, the extra PDFs were silently dropped.)
+- **Results on phones:** `ResultRow` gives the file name its own line on narrow screens, so three buttons no longer squeeze a long name into a sliver.
+
+## Decision: no accounts, anywhere
+There are no accounts, sign-in or cloud storage, in the web app **and in the Android app**. Everything stays on the device. So there is no account-deletion page (`delete-account` was removed on purpose), and sync, if ever wanted, would be an export and import of files, not a login.
+
+## Open items (the polish list)
+- Screen-reader pass on a real phone.
+- *Area adjust* (a regional adjustment) is still unbuilt.
 
 ## Left out on purpose
 Canva's *Element / Area* AI selection and BG Remover need models. "Area" could later become a regional adjust.

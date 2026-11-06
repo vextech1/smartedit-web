@@ -1,0 +1,975 @@
+diff --git a/src/app.css b/src/app.css
+index 7b08093..106f52e 100644
+--- a/src/app.css
++++ b/src/app.css
+@@ -120,6 +120,8 @@ nav.bottom { display: none; }
+ .tile { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 18px 8px; min-height: 96px; border-radius: var(--r); background: var(--card);
+         border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 600; font-size: .95rem; }
+ .tile svg { color: var(--c); } .tile:hover { border-color: var(--c); }
++.tile.off { opacity: .42; cursor: not-allowed; } .tile.off:hover { border-color: var(--line); } .tile small { font-weight: 400; font-size: .75rem; color: var(--muted); }
++.card.off { opacity: .5; cursor: not-allowed; } .card.off h3 { margin: 0 0 4px; font-size: 1.05rem; } .card.off p { margin: 0; color: var(--muted); font-size: .95rem; }
+ .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+ .chips button { flex: none; font: inherit; padding: 8px 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
+ .chips button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
+@@ -172,3 +174,13 @@ nav.bottom { display: none; }
+ .wscards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+ .studiolink { margin: 0 0 16px; }
+ .start .drop { margin-top: 4px; }
++
++.openbar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; margin: 0 0 18px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--card); }
++.openbar .grow { min-width: 0; } .openbar small { display: block; color: var(--accent); font-weight: 600; } .openbar strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++
++.storage { padding: 12px 14px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
++.storage.full { border-color: var(--mark); }
++.storage .meter { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
++.storage .meter span { display: block; height: 100%; background: var(--accent); }
++.storage.full .meter span { background: var(--mark); }
++.storage .warn { margin: 8px 0 0; }
+diff --git a/src/lib/active.svelte.ts b/src/lib/active.svelte.ts
+new file mode 100644
+index 0000000..f7c77dd
+--- /dev/null
++++ b/src/lib/active.svelte.ts
+@@ -0,0 +1,49 @@
++// The open work, shared by every page: tools that suit its kind use it, the rest show as not supported.
++import { getSessions, WORK_LIMIT_BYTES, WORK_NEAR, type SessionMeta } from '#lib/core/session.ts';
++import { getActiveId, setActiveId } from '#lib/core/active.ts';
++import type { FileKind } from '#lib/core/workspaces.ts';
++
++export interface ActiveWork { id: string; kind: FileKind; name: string; workspace: string }
++
++export const UNSAVED_WARNING = 'The latest change is not saved on this device. If you leave it now, it is lost. Leave anyway?';
++
++class ActiveStore {
++  work = $state<ActiveWork | undefined>();
++  /** The latest change when unfinished work is full and it could not be saved. Kept in memory only, so it follows the person between tools but not a reload. */
++  unsaved = $state<{ id: string; file: File } | undefined>();
++  private loading?: Promise<void>;
++
++  /** Make a session the open work (called whenever a session is opened, started or changed). */
++  set(m: Pick<SessionMeta, 'id' | 'kind' | 'name' | 'workspace'>) {
++    this.work = { id: m.id, kind: m.kind, name: m.name, workspace: m.workspace };
++    setActiveId(m.id);
++  }
++  /** Let go of the open work. The session itself stays saved and can be continued later. */
++  clear() { this.work = undefined; this.unsaved = undefined; setActiveId(undefined); }
++  /** Like clear, but asks first when an unsaved change would be lost. Returns false if the person chose to stay. */
++  release(): boolean {
++    if (this.unsaved && !confirm(UNSAVED_WARNING)) return false;
++    this.clear(); return true;
++  }
++  holdUnsaved(id: string, file: File) { this.unsaved = { id, file }; }
++  dropUnsaved() { this.unsaved = undefined; }
++  /** Re-read the open work from storage: restores it after a reload, and forgets it if it has expired or been deleted. */
++  async refresh(): Promise<void> {
++    const id = this.work?.id ?? getActiveId(); if (!id) return;
++    try { const m = await getSessions().get(id); if (m) this.set(m); else this.clear(); } catch { /* storage unavailable: leave as is */ }
++  }
++  /** Restore the remembered work once per page load. */
++  hydrate(): Promise<void> { return (this.loading ??= this.refresh()); }
++}
++export const activeWork = new ActiveStore();
++
++/** How much of the shared limit unfinished work is using. */
++class WorkUsage {
++  used = $state(0);
++  limit = $state(WORK_LIMIT_BYTES);
++  get full() { return this.used >= this.limit; }
++  get near() { return this.used >= this.limit * WORK_NEAR; }
++  get percent() { return Math.min(100, Math.round((this.used / this.limit) * 100)); }
++  async refresh() { try { const u = await getSessions().usage(); this.used = u.used; this.limit = u.limit; } catch { /* storage unavailable */ } }
++}
++export const workUsage = new WorkUsage();
+diff --git a/src/lib/components/Studio.svelte b/src/lib/components/Studio.svelte
+index a9f2ca2..7aba536 100644
+--- a/src/lib/components/Studio.svelte
++++ b/src/lib/components/Studio.svelte
+@@ -4,6 +4,7 @@
+   import { page } from '$app/state';
+   import FileDrop from './FileDrop.svelte';
+   import ToolView from './ToolView.svelte';
++  import WorkStorage from './WorkStorage.svelte';
+   import PhotoEditor from './editor/PhotoEditor.svelte';
+   import PdfEditor from './editor/PdfEditor.svelte';
+   import { StudioState, setStudio } from '#lib/workspace.svelte.ts';
+@@ -12,7 +13,8 @@
+   import { getRetentionDays } from '#lib/core/settings.ts';
+   import { setPending, ago } from '#lib/core/handoff.ts';
+   import { fmtBytes } from '#lib/core/format.ts';
+-  import { fileKind, studioHref, tabInput, type Workspace } from '#lib/core/workspaces.ts';
++  import { activeWork, workUsage, UNSAVED_WARNING } from '#lib/active.svelte.ts';
++  import { fileKind, studioHref, tabInput, workspaceSupports, unsupportedNote, type Workspace, type WorkspaceId } from '#lib/core/workspaces.ts';
+ 
+   let { workspace }: { workspace: Workspace } = $props();
+   // The page re-creates this component for another studio, so the first value is the right one.
+@@ -41,6 +43,9 @@
+   const pdfEditor = $derived(ws.id === 'pdf' && kind === 'pdf');
+   const showTool = $derived(!!st.file || (standalone && !!ws.startsEmpty?.includes(active)));
+   const left = $derived(st.session ? daysLeft(st.session, retention) : undefined);
++  const accepts = (k: Parameters<typeof workspaceSupports>[1]) => workspaceSupports(ws, k);
++  // The open work (from another studio) is a kind of file this studio has no tool for.
++  const blocked = $derived(!st.file && activeWork.work && !workspaceSupports(ws, activeWork.work.kind) ? activeWork.work : undefined);
+   const startLabel = ws.accept === 'application/pdf' ? 'Choose a PDF' : ws.accept === 'image/*' ? 'Choose a photo' : 'Choose a PDF or pictures';
+ 
+   const here = () => goto(studioHref(ws.id, active, st.session?.id), { replace: true, reset: false });
+@@ -58,7 +63,8 @@
+     pick(fits.includes(active) ? active : (fits[0] ?? active));
+   }
+   async function refresh() {
+-    try { recents = (await getSessions().list(ws.id)).filter((m) => m.id !== st.session?.id).slice(0, 6); } catch { unavailable = true; }
++    // Every piece of unfinished work this studio has a tool for, whichever studio it was last used in.
++    try { recents = (await getSessions().list()).filter((m) => m.id !== st.session?.id && workspaceSupports(ws, m.kind)).slice(0, 6); void workUsage.refresh(); } catch { unavailable = true; }
+   }
+ 
+   // A tab asked for from elsewhere (the Next steps dialog) opens here.
+@@ -70,14 +76,20 @@
+   $effect(() => {
+     const sid = page.url.searchParams.get('s'), tab = page.url.searchParams.get('tab');
+     if (!booted || !sid) return;
+-    untrack(() => { if (sid !== st.session?.id) void st.load(sid).then((ok) => { if (!ok) return; standalone = false; if (tab && ws.tabs.includes(tab)) active = tab; settle(); }); });
++    untrack(() => { if (sid !== st.session?.id) void st.load(sid, accepts).then((ok) => { if (!ok) return; standalone = false; if (tab && ws.tabs.includes(tab)) active = tab; settle(); }); });
+   });
+ 
+   onMount(async () => {
+     retention = getRetentionDays();
+     const q = page.url.searchParams, sid = q.get('s'), tab = q.get('tab');
+     if (tab && ws.tabs.includes(tab)) active = tab;
+-    if (sid && !(await st.load(sid))) notice = 'That work is no longer saved. It may have expired or been cleared.';
++    if (sid) { if (!(await st.load(sid, accepts))) notice = 'That work is not available here. It may have expired, been cleared, or be a kind of file this studio cannot open.'; }
++    else {
++      // No work named in the address: carry on with the open work if one of this studio's tools can take it.
++      await activeWork.hydrate();
++      const a = activeWork.work;
++      if (a && accepts(a.kind)) await st.load(a.id, accepts);
++    }
+     await refresh();
+     if (st.file) settle();
+     else if (tab && ws.startsEmpty?.includes(tab)) { standalone = true; pick(tab); }
+@@ -97,13 +109,13 @@
+   }
+   async function resume(m: SessionMeta) {
+     notice = ''; standalone = false;
+-    if (await st.load(m.id)) settle(); else { notice = 'That work is no longer saved.'; await refresh(); }
++    if (await st.load(m.id, accepts)) settle(); else { notice = 'That work is no longer saved.'; await refresh(); }
+   }
+-  async function leave() { st.close(); standalone = false; mounted = {}; saved = 'idle'; await refresh(); void goto(studioHref(ws.id), { replace: true, reset: false }); }
++  async function leave() { if (st.unsaved && !confirm(UNSAVED_WARNING)) return; st.close(); standalone = false; mounted = {}; saved = 'idle'; await refresh(); void goto(studioHref(ws.id), { replace: true, reset: false }); }
+   async function remove(id?: string) {
+     if (!id || !confirm('Delete this saved work from this device? This cannot be undone.')) return;
+     if (st.session?.id === id) { await st.discard(); mounted = {}; void goto(studioHref(ws.id), { replace: true, reset: false }); }
+-    else { try { await getSessions().discard(id); } catch { /* ignore */ } }
++    else { try { await getSessions().discard(id); } catch { /* ignore */ } if (activeWork.work?.id === id) activeWork.clear(); }
+     await refresh();
+   }
+   async function keepCopy() { try { saved = (await st.saveToLibrary()) ? 'ok' : 'failed'; } catch { saved = 'failed'; } }
+@@ -118,7 +130,11 @@
+     {/if}
+   </section>
+   {#if notice}<p role="status" class="warn">{notice}</p>{/if}
++  {#if blocked}
++    <p role="status" class="warn">{unsupportedNote(blocked.kind)} here: “{blocked.name}” is open, and {ws.title} has no tool for it. Choose a different file to start new work (yours stays in Continue), or <a href={studioHref(blocked.workspace as WorkspaceId, undefined, blocked.id)}>go back to it</a>.</p>
++  {/if}
+   {#if unavailable}<p class="muted">Saved work is not available in this browser. You can still use the tools, but nothing is kept between steps.</p>{/if}
++  <WorkStorage />
+   {#if recents.length}
+     <h2>Continue where you left off</h2>
+     <ul class="rows">
+diff --git a/src/lib/components/ToolTile.svelte b/src/lib/components/ToolTile.svelte
+index 7a79d48..a14657c 100644
+--- a/src/lib/components/ToolTile.svelte
++++ b/src/lib/components/ToolTile.svelte
+@@ -1,8 +1,16 @@
+ <script lang="ts">
+   import { ICONS } from '#lib/icons.ts';
+-  let { href, icon, label, color }: { href: string; icon: string; label: string; color: string } = $props();
++  // `unsupported` greys the tile out (not a link) with a short reason, for tools that cannot take the open file.
++  let { href, icon, label, color, unsupported = '' }: { href: string; icon: string; label: string; color: string; unsupported?: string } = $props();
+ </script>
+-<a class="tile" {href} style="--c:{color}">
+-  <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d={ICONS[icon] ?? ''} fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+-  <span>{label}</span>
+-</a>
++{#if unsupported}
++  <div class="tile off" style="--c:{color}" aria-disabled="true" title={unsupported}>
++    <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d={ICONS[icon] ?? ''} fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
++    <span>{label}</span><small>{unsupported}</small>
++  </div>
++{:else}
++  <a class="tile" {href} style="--c:{color}">
++    <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d={ICONS[icon] ?? ''} fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
++    <span>{label}</span>
++  </a>
++{/if}
+diff --git a/src/lib/components/WorkStorage.svelte b/src/lib/components/WorkStorage.svelte
+new file mode 100644
+index 0000000..8062468
+--- /dev/null
++++ b/src/lib/components/WorkStorage.svelte
+@@ -0,0 +1,73 @@
++<script lang="ts">
++  import { onMount } from 'svelte';
++  import { getSessions, type SessionMeta } from '#lib/core/session.ts';
++  import { getLibrary, keepStorage } from '#lib/core/library.ts';
++  import { activeWork, workUsage } from '#lib/active.svelte.ts';
++  import { fmtBytes } from '#lib/core/format.ts';
++  import { ago } from '#lib/core/handoff.ts';
++  import { studioHref, workspaceById } from '#lib/core/workspaces.ts';
++  // Shows how much of the 100 MB unfinished work is using. Near the limit (or with `always`) it lists the work so some can be finished.
++  let { always = false }: { always?: boolean } = $props();
++  let list = $state<SessionMeta[]>([]);
++  let msg = $state('');
++  const sizeOf = (m: SessionMeta) => m.versions.reduce((t, v) => t + v.size, 0);
++
++  async function load() {
++    try { list = (await getSessions().list()).sort((a, b) => sizeOf(b) - sizeOf(a)); } catch { list = []; }
++    await workUsage.refresh();
++  }
++  onMount(load);
++
++  async function download(m: SessionMeta) {
++    const f = await getSessions().file(m.id); if (!f) return;
++    const url = URL.createObjectURL(f); const a = document.createElement('a'); a.href = url; a.download = f.name; a.click();
++    setTimeout(() => URL.revokeObjectURL(url), 10000);
++  }
++  async function keep(m: SessionMeta) {
++    msg = '';
++    try {
++      const f = await getSessions().file(m.id); if (!f) return;
++      const lib = getLibrary(), meta = await lib.save(f.name, f); void keepStorage(); void lib.indexFile(meta.id).catch(() => {});
++      msg = `Saved “${f.name}” to My files.`;
++    } catch { msg = 'Could not save to My files.'; }
++  }
++  async function remove(m: SessionMeta) {
++    if (!confirm(`Delete “${m.name}” from this device? Download or save it first if you still need it.`)) return;
++    try { await getSessions().discard(m.id); } catch { /* ignore */ }
++    if (activeWork.work?.id === m.id) activeWork.clear();
++    msg = ''; await load();
++  }
++  async function freeUp() {
++    msg = '';
++    try { const freed = await getSessions().compactAll(); msg = freed > 0 ? `Freed ${fmtBytes(freed)}. Only the original and latest version of each piece of work are kept.` : 'Nothing more to free: each piece of work already has just its original and latest version.'; }
++    catch { msg = 'Could not free up space.'; }
++    await load();
++  }
++</script>
++
++{#if workUsage.near || (always && list.length)}
++  <section class="storage" class:full={workUsage.full} aria-label="Unfinished work storage">
++    <div class="meter" role="img" aria-label="{workUsage.percent}% used"><span style="width:{workUsage.percent}%"></span></div>
++    <p class="sub" style="margin:6px 0 0">Unfinished work uses {fmtBytes(workUsage.used)} of {fmtBytes(workUsage.limit)}.</p>
++    {#if workUsage.full}
++      <p class="warn" role="alert"><strong>Storage for unfinished work is full.</strong> Finish a piece of work, then download it or save it to My files and delete it here. Until you do, new changes are not saved automatically.</p>
++    {:else if workUsage.near}
++      <p class="warn" role="status">Almost full. Finish the work you are done with, then download or save it and delete it here, so new changes keep saving automatically.</p>
++    {/if}
++    {#if workUsage.near && list.length}
++      <ul class="rows" style="margin-top:10px">
++        {#each list as m (m.id)}
++          <li class="row"><div class="grow"><strong>{m.name}</strong>
++            <div class="sub">{workspaceById(m.workspace)?.title} · {fmtBytes(sizeOf(m))} · {ago(m.updated)}</div></div>
++            <a class="btn small" href={studioHref(m.workspace as never, undefined, m.id)}>Open</a>
++            <button class="btn small ghost" type="button" onclick={() => download(m)}>Download</button>
++            <button class="btn small ghost" type="button" onclick={() => keep(m)}>Save</button>
++            <button class="icon" type="button" aria-label="Delete {m.name}" onclick={() => remove(m)}>✕</button></li>
++        {/each}
++      </ul>
++      <p style="margin:10px 0 0"><button class="btn small ghost" type="button" onclick={freeUp}>Free up space</button>
++        <span class="sub">Keeps only the original and latest version of each piece of work.</span></p>
++    {/if}
++    {#if msg}<p class="sub" role="status" style="margin:8px 0 0">{msg}</p>{/if}
++  </section>
++{/if}
+diff --git a/src/lib/components/editor/PdfEditor.svelte b/src/lib/components/editor/PdfEditor.svelte
+index be9bd06..9a77ea8 100644
+--- a/src/lib/components/editor/PdfEditor.svelte
++++ b/src/lib/components/editor/PdfEditor.svelte
+@@ -238,7 +238,7 @@
+         <button type="button" aria-label="Zoom in" disabled={zoom.scale >= 6} onclick={() => zoomBy(1.25)}>+</button>
+         <button type="button" aria-label="Reset zoom" onclick={resetZoom}>Reset</button>
+       </div>
+-      {#if bad}<p class="toast" role="alert">{status}</p>{/if}
++      {#if bad}<p class="toast" role="alert">{status}</p>{:else if st.note}<p class="toast" role="status">{st.note}</p>{/if}
+     </section>
+     <nav class="pager" aria-label="PDF pages">
+       <button class="ic" type="button" aria-label="Previous page" disabled={current === 0 || !!sheet} onclick={() => changePage(current - 1)}><Icon name="back" /></button>
+diff --git a/src/lib/core/active.ts b/src/lib/core/active.ts
+new file mode 100644
+index 0000000..b89b0ca
+--- /dev/null
++++ b/src/lib/core/active.ts
+@@ -0,0 +1,12 @@
++// Which work session is open right now, remembered per browser so it follows the person from tool to tool.
++// Only the session's id is stored here; the file and its versions live in session.ts (IndexedDB).
++export const ACTIVE_KEY = 'smartedit.activeWork';
++type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
++const local = (): Store | undefined => { try { return globalThis.localStorage; } catch { return undefined; } };
++
++export function getActiveId(s: Store | undefined = local()): string | undefined {
++  try { return s?.getItem(ACTIVE_KEY) || undefined; } catch { return undefined; }
++}
++export function setActiveId(id: string | undefined, s: Store | undefined = local()) {
++  try { if (id) s?.setItem(ACTIVE_KEY, id); else s?.removeItem(ACTIVE_KEY); } catch { /* storage unavailable */ }
++}
+diff --git a/src/lib/core/session.ts b/src/lib/core/session.ts
+index 9529a2e..ebe99b3 100644
+--- a/src/lib/core/session.ts
++++ b/src/lib/core/session.ts
+@@ -24,12 +24,20 @@ export interface SessionStore {
+ /** The Original plus the latest versions; older ones are pruned. */
+ export const MAX_VERSIONS = 10;
+ export const DEFAULT_RETENTION_DAYS = 7;
++/** All unfinished work together may use at most this much of the browser's storage. */
++export const WORK_LIMIT_BYTES = 100 * 1024 * 1024;
++/** Usage at or above this share of the limit counts as "almost full". */
++export const WORK_NEAR = 0.8;
+ const DAY = 86_400_000;
+ 
+ export class KindMismatchError extends Error {
+   constructor() { super('This file is a different kind from the one being edited.'); this.name = 'KindMismatchError'; }
+ }
+ 
++export class WorkLimitError extends Error {
++  constructor() { super('Unfinished work is using all of its storage.'); this.name = 'WorkLimitError'; }
++}
++
+ const defaultId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+ const sameBytes = (a: ArrayBuffer, b: ArrayBuffer) => {
+   if (a.byteLength !== b.byteLength) return false;
+@@ -42,12 +50,21 @@ const isQuota = (e: unknown) => (e as { name?: string })?.name === 'QuotaExceede
+ 
+ export class Sessions {
+   constructor(private store: SessionStore, private now: () => number = Date.now, private newId: () => string = defaultId,
+-    private max: number = MAX_VERSIONS) {}
++    private max: number = MAX_VERSIONS, private limit: number = WORK_LIMIT_BYTES) {}
++
++  /** How much of the shared limit unfinished work is using. */
++  async usage(): Promise<{ used: number; limit: number; near: boolean; full: boolean }> {
++    const used = await this.totalBytes();
++    return { used, limit: this.limit, near: used >= this.limit * WORK_NEAR, full: used >= this.limit };
++  }
++  /** Refuse to store `extra` more bytes if that would go over the limit. */
++  private async assertRoom(extra: number) { if ((await this.totalBytes()) + extra > this.limit) throw new WorkLimitError(); }
+ 
+   /** Begin a session from a file. The file becomes the Original. */
+   async start(workspace: string, blob: Blob, name: string): Promise<SessionMeta> {
+     const kind = fileKind(blob.type);
+     if (!kind) throw new KindMismatchError();
++    await this.assertRoom(blob.size);
+     const t = this.now(), v: Version = { id: this.newId(), label: 'Original', name: name.trim() || 'file', type: blob.type, size: blob.size, at: t };
+     const meta: SessionMeta = { id: this.newId(), workspace, kind, name: v.name, versions: [v], head: 0, created: t, updated: t };
+     await this.store.putBlob(key(meta, v), await blob.arrayBuffer());
+@@ -74,6 +91,7 @@ export class Sessions {
+     const data = await blob.arrayBuffer();
+     const cur = m.versions[m.head], curData = cur && await this.store.getBlob(key(m, cur));
+     if (cur && curData && cur.type === blob.type && sameBytes(curData, data)) return { meta: m, added: false };
++    await this.assertRoom(blob.size);
+     const v: Version = { id: this.newId(), label: label.trim() || 'Edit', name: name?.trim() || cur?.name || m.name, type: blob.type, size: blob.size, at: this.now() };
+     try { await this.store.putBlob(key(m, v), data); }
+     catch (e) {
+@@ -97,6 +115,12 @@ export class Sessions {
+     m.versions = m.versions.filter((_, i) => keep.has(i)); m.head = m.versions.length - 1;
+     await this.store.putMeta(m);
+   }
++  /** For every piece of work, keep only the Original and the working version. Returns the bytes freed. */
++  async compactAll(): Promise<number> {
++    const before = await this.totalBytes();
++    for (const m of await this.store.metas()) await this.compactMeta(m);
++    return before - (await this.totalBytes());
++  }
+   /** Keep only the Original and the working version. Frees space when the browser says storage is full. */
+   async compact(id: string) { const m = await this.get(id); if (m) await this.compactMeta(m); return this.get(id); }
+ 
+@@ -110,6 +134,8 @@ export class Sessions {
+   /** Mark as used just now, so retention counts from today. */
+   async touch(id: string) { const m = await this.get(id); if (m) await this.save(m); }
+   async setPinned(id: string, on: boolean) { const m = await this.get(id); if (!m) return; if (on) m.pinned = true; else delete m.pinned; await this.store.putMeta(m); }
++  /** Record the studio the work was last opened in, so Continue returns to it. */
++  async move(id: string, workspace: string) { const m = await this.get(id); if (m && m.workspace !== workspace) { m.workspace = workspace; await this.save(m); } }
+   async rename(id: string, name: string) { const m = await this.get(id), n = name.trim(); if (m && n) { m.name = n; await this.save(m); } }
+ 
+   async discard(id: string) {
+diff --git a/src/lib/core/workspaces.ts b/src/lib/core/workspaces.ts
+index 7efc540..fd0b582 100644
+--- a/src/lib/core/workspaces.ts
++++ b/src/lib/core/workspaces.ts
+@@ -56,6 +56,13 @@ const INPUT: Record<string, FileKind> = {
+ /** The kind of working file a tab takes as input. */
+ export const tabInput = (slug: string): FileKind => INPUT[slug] ?? (workspaceFor(slug)?.id === 'photo' ? 'image' : 'pdf');
+ 
++/** Whether a tool can take a file of this kind. With no file open, every tool is available. */
++export const toolSupports = (slug: string, kind: FileKind | undefined): boolean => !kind || tabInput(slug) === kind;
++/** Whether any tool in a studio can take a file of this kind. */
++export const workspaceSupports = (w: Workspace, kind: FileKind | undefined): boolean => !kind || w.tabs.some((s) => toolSupports(s, kind));
++/** Short reason shown on a greyed-out tool. */
++export const unsupportedNote = (kind: FileKind | undefined): string => (kind === 'pdf' ? 'Not supported for a PDF' : 'Not supported for a picture');
++
+ /** Link to a studio, optionally on a tab and for an open session. */
+ export function studioHref(workspace: WorkspaceId, tab?: string, session?: string): string {
+   const q = new URLSearchParams();
+diff --git a/src/lib/workspace.svelte.ts b/src/lib/workspace.svelte.ts
+index c656bf9..3843c2f 100644
+--- a/src/lib/workspace.svelte.ts
++++ b/src/lib/workspace.svelte.ts
+@@ -2,12 +2,15 @@
+ // The storage logic lives in core/session.ts (tested in Node); this file only connects it to the screen.
+ import { getContext, setContext } from 'svelte';
+ import { goto } from '$app/navigation';
+-import { getSessions, type SessionMeta } from '#lib/core/session.ts';
++import { getSessions, WorkLimitError, type SessionMeta } from '#lib/core/session.ts';
+ import { getLibrary, keepStorage } from '#lib/core/library.ts';
+ import { setPending } from '#lib/core/handoff.ts';
+-import { fileKind, studioHref, workspaceFor, type WorkspaceId } from '#lib/core/workspaces.ts';
++import { activeWork, workUsage } from '#lib/active.svelte.ts';
++import { fileKind, studioHref, workspaceFor, type FileKind, type WorkspaceId } from '#lib/core/workspaces.ts';
+ 
+ const KEY = Symbol('studio');
++export const FULL_NOTE = 'Unfinished work is using all 100 MB, so changes are not saved automatically. Download your work, or finish and delete older work to make room.';
++export const FULL_OPEN_NOTE = 'Unfinished work is using all 100 MB, so this file is not saved automatically and undo is off. Download your results, or finish and delete older work first.';
+ 
+ export class StudioState {
+   session = $state<SessionMeta | undefined>();
+@@ -17,47 +20,82 @@ export class StudioState {
+   note = $state('');
+   /** True when this browser cannot store sessions: the file is kept in memory only, with no undo history. */
+   memoryOnly = $state(false);
++  /** True when the latest change could not be saved because unfinished work is full: it exists only in memory until room is made. */
++  unsaved = $state(false);
+   private mem = $state(0);   // bumps on every memory-only change so tools reload on it
+   constructor(readonly workspace: WorkspaceId) {}
+ 
+   /** Changes whenever the working file changes, so tools can reload on it. */
+-  get head(): string | undefined { return this.session ? this.session.versions[this.session.head]?.id : this.file ? `memory-${this.mem}` : undefined; }
+-  get canUndo() { return !!this.session && this.session.head > 0; }
+-  get canRedo() { return !!this.session && this.session.head < this.session.versions.length - 1; }
++  get head(): string | undefined {
++    if (this.unsaved) return `memory-${this.mem}`;
++    return this.session ? this.session.versions[this.session.head]?.id : this.file ? `memory-${this.mem}` : undefined;
++  }
++  get canUndo() { return this.unsaved || (!!this.session && this.session.head > 0); }
++  get canRedo() { return !this.unsaved && !!this.session && this.session.head < this.session.versions.length - 1; }
+ 
+-  private apply(meta: SessionMeta | undefined, file: File | undefined) { this.session = meta; this.file = file; }
++  /** Whatever is open here is the open work for every other tool too. */
++  private apply(meta: SessionMeta | undefined, file: File | undefined) { this.session = meta; this.file = file; if (meta) activeWork.set(meta); }
+   private async reload(id: string) {
+     const s = getSessions(), m = await s.get(id), f = m && await s.file(id);
+     if (!m || !f) return false;
+     this.apply(m, f); return true;
+   }
+-  /** Open an existing session. Returns false if it is gone (expired or cleared). */
+-  async load(id: string): Promise<boolean> {
+-    try { await getSessions().touch(id); return await this.reload(id); } catch { return false; }
++  /** Open an existing session, from any studio. Returns false if it is gone (expired or cleared) or `accepts` refuses its kind of file. */
++  async load(id: string, accepts?: (kind: FileKind) => boolean): Promise<boolean> {
++    try {
++      const s = getSessions(), m = await s.get(id);
++      if (!m || (accepts && !accepts(m.kind))) return false;
++      await s.touch(id);
++      if (m.workspace !== this.workspace) await s.move(id, this.workspace);   // Continue returns to the studio it was last used in
++      const held = activeWork.unsaved;
++      if (!(await this.reload(id))) return false;
++      if (held && held.id === id) { this.mem++; this.unsaved = true; this.file = held.file; this.note = FULL_NOTE; }   // an unsaved change follows the person between tools
++      return true;
++    } catch { return false; }
+   }
+   /** Start a session from a picked file. */
+   async open(file: File) {
+-    this.note = ''; this.memoryOnly = false;
++    this.note = ''; this.memoryOnly = false; this.unsaved = false; activeWork.dropUnsaved();
+     try {
+       const m = await getSessions().start(this.workspace, file, file.name); void keepStorage();
+-      await this.reload(m.id);
+-    } catch {
++      await this.reload(m.id); void workUsage.refresh();
++    } catch (e) {
+       this.memoryOnly = true; this.mem++; this.apply(undefined, file);
+-      this.note = 'This browser cannot keep your work between steps, so undo is off and nothing is saved if you leave.';
++      this.note = e instanceof WorkLimitError ? FULL_OPEN_NOTE
++        : 'This browser cannot keep your work between steps, so undo is off and nothing is saved if you leave.';
++      if (e instanceof WorkLimitError) void workUsage.refresh();
+     }
+   }
+   /** Make a result the new working version. Returns false when it was identical to the current one. */
+   async commit(blob: Blob, label: string, name?: string): Promise<boolean> {
+     const fname = name ?? this.file?.name ?? 'file';
+     if (!this.session) { this.mem++; this.apply(undefined, new File([blob], fname, { type: blob.type })); return true; }
+-    const r = await getSessions().commit(this.session.id, blob, label, name);
+-    if (!r) return false;
+-    if (r.added) await this.reload(this.session.id);
+-    return r.added;
++    try {
++      const r = await getSessions().commit(this.session.id, blob, label, name);
++      if (!r) return false;
++      if (!r.added && this.unsaved) { await this.revert(); return false; }   // the same as the saved version: nothing left unsaved
++      if (r.added) { this.unsaved = false; activeWork.dropUnsaved(); if (this.note === FULL_NOTE) this.note = ''; await this.reload(this.session.id); void workUsage.refresh(); }
++      return r.added;
++    } catch (e) {
++      if (!(e instanceof WorkLimitError)) throw e;
++      // Full: carry on with the change in memory, so the person can still use and download it.
++      const f = new File([blob], fname, { type: blob.type });
++      this.mem++; this.unsaved = true; this.file = f; this.note = FULL_NOTE;
++      activeWork.holdUnsaved(this.session.id, f); void workUsage.refresh();
++      return true;
++    }
++  }
++  /** Drop an unsaved change and return to the last saved version. */
++  private async revert() {
++    this.unsaved = false; activeWork.dropUnsaved(); if (this.note === FULL_NOTE) this.note = '';
++    if (this.session) await this.reload(this.session.id);
++  }
++  async undo() {
++    if (this.unsaved) return this.revert();
++    if (this.session && this.canUndo) { await getSessions().undo(this.session.id); await this.reload(this.session.id); }
+   }
+-  async undo() { if (this.session && this.canUndo) { await getSessions().undo(this.session.id); await this.reload(this.session.id); } }
+   async redo() { if (this.session && this.canRedo) { await getSessions().redo(this.session.id); await this.reload(this.session.id); } }
+-  async goTo(i: number) { if (this.session) { await getSessions().goTo(this.session.id, i); await this.reload(this.session.id); } }
++  async goTo(i: number) { if (this.unsaved) await this.revert(); if (this.session) { await getSessions().goTo(this.session.id, i); await this.reload(this.session.id); } }
+   async togglePin() {
+     if (!this.session) return;
+     await getSessions().setPinned(this.session.id, !this.session.pinned); await this.reload(this.session.id);
+@@ -69,8 +107,8 @@ export class StudioState {
+     return true;
+   }
+   /** Leave the file but keep the session (it can be continued later). */
+-  close() { this.apply(undefined, undefined); this.note = ''; this.memoryOnly = false; }
+-  async discard() { const id = this.session?.id; this.close(); if (id) { try { await getSessions().discard(id); } catch { /* ignore */ } } }
++  close() { this.apply(undefined, undefined); activeWork.clear(); this.note = ''; this.memoryOnly = false; this.unsaved = false; }
++  async discard() { const id = this.session?.id; this.close(); if (id) { try { await getSessions().discard(id); } catch { /* ignore */ } void workUsage.refresh(); } }
+ }
+ 
+ export const setStudio = (s: StudioState) => setContext(KEY, s);
+@@ -83,6 +121,7 @@ export async function sendToTool(blob: Blob, name: string, slug: string) {
+   const file = new File([blob], name, { type: blob.type });
+   try {
+     const m = await getSessions().start(w.id, file, name); void keepStorage();
++    activeWork.set(m);
+     await goto(studioHref(w.id, slug, m.id));
+   } catch {
+     setPending([file]); await goto(studioHref(w.id, slug));
+diff --git a/src/routes/+layout.svelte b/src/routes/+layout.svelte
+index e5a7574..ddb4ac8 100644
+--- a/src/routes/+layout.svelte
++++ b/src/routes/+layout.svelte
+@@ -5,6 +5,7 @@
+   import { SITE } from '#lib/site.ts';
+   import { getSessions } from '#lib/core/session.ts';
+   import { getRetentionDays } from '#lib/core/settings.ts';
++  import { activeWork } from '#lib/active.svelte.ts';
+   let { children } = $props();
+   const links = [
+     ['/', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+@@ -14,7 +15,10 @@
+   ] as const;
+   const isCurrent = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href) || (href === '/tools' && page.url.pathname.startsWith('/studio')));
+   // Work that has not been touched for the chosen number of days is removed (pinned work stays).
+-  onMount(() => { try { void getSessions().purgeExpired(getRetentionDays()).catch(() => {}); } catch { /* storage unavailable */ } });
++  onMount(async () => {
++    try { await getSessions().purgeExpired(getRetentionDays()); } catch { /* storage unavailable */ }
++    await activeWork.refresh();   // after the purge, so expired work is forgotten
++  });
+   const canonical = $derived(SITE.origin + (page.url.pathname === '/' ? '/' : page.url.pathname.replace(/\/$/, '')));
+   // Tool pages carry their tool in page data; everything else shares the site name.
+   const ogTitle = $derived((page.data as { tool?: { title: string } })?.tool ? `${(page.data as { tool: { title: string } }).tool.title} | ${SITE.name}` : SITE.name);
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index e334726..d1998f4 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -8,13 +8,17 @@
+   import { getLibrary, kindOf, type LibFile } from '#lib/core/library.ts';
+   import { routeFor, setPending, ago } from '#lib/core/handoff.ts';
+   import ToolTile from '#lib/components/ToolTile.svelte';
+-  import { toolHref } from '#lib/core/workspaces.ts';
++  import WorkStorage from '#lib/components/WorkStorage.svelte';
++  import { toolHref, workspaceById, studioHref, toolSupports, unsupportedNote } from '#lib/core/workspaces.ts';
++  import { activeWork } from '#lib/active.svelte.ts';
++  import { getSessions, type SessionMeta } from '#lib/core/session.ts';
+ 
+   const popular = [['organize-pdf', 'Edit PDF', 'PDF'], ['edit-image', 'Edit Image', 'Image'], ['scan-document', 'Scan Document', 'Document'], ['images-to-pdf', 'Create PDF', 'PDF']] as const;
+   const KEY = 'smartedit.recentClearedAt';
+   let input: HTMLInputElement;
+   let over = $state(false); let msg = $state('');
+   let recent = $state<LibFile[]>([]);
++  let unfinished = $state<SessionMeta[]>([]);
+ 
+   function take(list: FileList | null) {
+     const files = Array.from(list ?? []); const to = routeFor(files);
+@@ -26,7 +30,9 @@
+     try { recent = (await getLibrary().list()).filter((f) => f.created > since).sort((a, b) => b.created - a.created).slice(0, 3); } catch { recent = []; }
+   }
+   function clearRecent() { try { localStorage.setItem(KEY, String(Date.now())); } catch { /* ignore */ } recent = []; }
+-  onMount(loadRecent);
++  async function loadUnfinished() { try { unfinished = (await getSessions().list()).slice(0, 3); } catch { unfinished = []; } }
++  onMount(() => { loadRecent(); loadUnfinished(); });
++  const kind = $derived(activeWork.work?.kind);
+ </script>
+ <svelte:head><title>{SITE.name}: scan, convert, compress and edit documents</title>
+ <meta name="description" content="Free document and image tools in your browser: edit PDFs, scan, compress, convert and organize files." /></svelte:head>
+@@ -46,9 +52,21 @@
+ </label>
+ {#if msg}<p class="warn" role="alert">{msg}</p>{/if}
+ 
++{#if unfinished.length}
++  <div class="sec"><h2>Continue editing</h2></div>
++  <ul class="rows">
++    {#each unfinished as m (m.id)}
++      <li class="row"><div class="grow"><strong>{m.name}</strong><div class="sub">{workspaceById(m.workspace)?.title} · {ago(m.updated)}</div></div>
++        {#if activeWork.work?.id === m.id}<button class="btn small ghost" type="button" onclick={() => activeWork.release()}>Clear</button>{/if}
++        <a class="btn small" href={studioHref(m.workspace as never, undefined, m.id)}>{activeWork.work?.id === m.id ? 'Open' : 'Continue'}</a></li>
++    {/each}
++  </ul>
++{/if}
++<WorkStorage />
++
+ <div class="sec"><h2>Popular Tools</h2><a href="/tools">See all →</a></div>
+ <div class="tiles two">
+-  {#each popular as [slug, label, cat]}<ToolTile href={toolHref(slug)} icon={slug} {label} color={CATEGORY_COLOR[cat]} />{/each}
++  {#each popular as [slug, label, cat]}<ToolTile href={toolHref(slug)} icon={slug} {label} color={CATEGORY_COLOR[cat]} unsupported={toolSupports(slug, kind) ? '' : unsupportedNote(kind)} />{/each}
+ </div>
+ 
+ {#if recent.length}
+diff --git a/src/routes/delete-account/+page.svelte b/src/routes/delete-account/+page.svelte
+deleted file mode 100644
+index a63961a..0000000
+--- a/src/routes/delete-account/+page.svelte
++++ /dev/null
+@@ -1,29 +0,0 @@
+-<svelte:head><title>Delete your account — Smart Edit</title><meta name="description" content="How to delete your Smart Edit account and the data linked to it." /></svelte:head>
+-<article class="prose">
+-<h1>Delete your account</h1>
+-<p class="meta">Smart Edit account deletion</p>
+-
+-<h2>Delete it in the app</h2>
+-<ol>
+-<li>Open Smart Edit and sign in.</li>
+-<li>Go to <strong>Settings → Account</strong>.</li>
+-<li>Tap <strong>Delete account</strong> and confirm.</li>
+-</ol>
+-<p>Your account and profile are deleted straight away.</p>
+-
+-<h2>Can’t open the app?</h2>
+-<p>Email us from the address you signed up with at <strong>andereya8@gmail.com</strong> with the subject “Delete my account”. We will delete the account and confirm by email, within 30 days.</p>
+-
+-<h2>What gets deleted</h2>
+-<ul>
+-<li>Your sign-in (email address and account ID).</li>
+-<li>Your profile details, such as your display name.</li>
+-</ul>
+-
+-<h2>What is not affected</h2>
+-<ul>
+-<li>Files on your device. They never left it, so you manage them yourself or by uninstalling the app.</li>
+-<li>Anonymous usage statistics already collected, which are not linked to your name or email.</li>
+-</ul>
+-<p>More detail is in our <a href="/privacy">privacy policy</a>.</p>
+-</article>
+diff --git a/src/routes/library/+page.svelte b/src/routes/library/+page.svelte
+index c021bb8..0b61f3e 100644
+--- a/src/routes/library/+page.svelte
++++ b/src/routes/library/+page.svelte
+@@ -134,7 +134,5 @@
+   </ul>
+   {#if quota && total / quota >= 0.8}
+     <p class="warn" role="alert" style="margin-top:18px">⚠ Storage is {Math.round(total / quota * 100)}% full ({fmtBytes(total)} of {fmtBytes(quota)}). Delete files you no longer need to avoid save failures.</p>
+-  {:else}
+-    <p class="muted" style="margin-top:18px">Using {fmtBytes(total)}{#if quota} of about {fmtBytes(quota)} available to this site{/if}. Saved files live in this browser, so clearing site data removes them. To use one in a tool, choose <em>Choose from My files</em>.</p>
+   {/if}
+ {/if}
+diff --git a/src/routes/settings/+page.svelte b/src/routes/settings/+page.svelte
+index f054191..e333f06 100644
+--- a/src/routes/settings/+page.svelte
++++ b/src/routes/settings/+page.svelte
+@@ -9,7 +9,7 @@
+ 
+   const themes: [Theme, string][] = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']];
+   const links = [['/library?trash=1', 'Trash', 'Deleted files, kept for 30 days'], ['/faq', 'FAQ', 'Common questions'], ['/contact', 'Contact', 'Get in touch'],
+-    ['/privacy', 'Privacy policy', ''], ['/terms', 'Terms of use', ''], ['/delete-account', 'Delete account', 'Remove your data']];
++    ['/privacy', 'Privacy policy', ''], ['/terms', 'Terms of use', '']];
+   let theme = $state<Theme>('system'); let lang = $state('eng');
+   let used = $state(0); let quota = $state(0); let count = $state(0); let unavailable = $state(false); let note = $state('');
+   const codes = OCR_LANGS.map((l) => l.code);
+diff --git a/src/routes/sitemap.xml/+server.ts b/src/routes/sitemap.xml/+server.ts
+index a9107c5..849f313 100644
+--- a/src/routes/sitemap.xml/+server.ts
++++ b/src/routes/sitemap.xml/+server.ts
+@@ -5,7 +5,7 @@ import { workspaces } from '#lib/core/workspaces.ts';
+ export const prerender = true;
+ 
+ export function GET() {
+-  const paths = ['/', '/tools', ...workspaces.map((w) => `/studio/${w.id}`), ...tools.map((t) => `/tools/${t.slug}`), '/settings', '/faq', '/contact', '/privacy', '/terms', '/delete-account'];
++  const paths = ['/', '/tools', ...workspaces.map((w) => `/studio/${w.id}`), ...tools.map((t) => `/tools/${t.slug}`), '/settings', '/faq', '/contact', '/privacy', '/terms'];
+   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map((p) => `  <url><loc>${abs(p)}</loc></url>`).join('\n')}\n</urlset>\n`;
+   return new Response(xml, { headers: { 'Content-Type': 'application/xml' } });
+ }
+diff --git a/src/routes/tools/+page.svelte b/src/routes/tools/+page.svelte
+index 1a6b6b9..426e90a 100644
+--- a/src/routes/tools/+page.svelte
++++ b/src/routes/tools/+page.svelte
+@@ -2,12 +2,16 @@
+   import { tools, categories, type Category } from '#lib/tools.ts';
+   import { CATEGORY_COLOR } from '#lib/icons.ts';
+   import ToolTile from '#lib/components/ToolTile.svelte';
++  import WorkStorage from '#lib/components/WorkStorage.svelte';
+   import { onMount } from 'svelte';
+-  import { workspaces, workspaceById, studioHref, toolHref } from '#lib/core/workspaces.ts';
++  import { workspaces, workspaceById, studioHref, toolHref, toolSupports, workspaceSupports, unsupportedNote } from '#lib/core/workspaces.ts';
++  import { activeWork } from '#lib/active.svelte.ts';
+   import { getSessions, type SessionMeta } from '#lib/core/session.ts';
+   import { ago } from '#lib/core/handoff.ts';
+-  let recent = $state<SessionMeta[]>([]);
+-  onMount(async () => { try { recent = (await getSessions().list()).slice(0, 3); } catch { /* storage unavailable */ } });
++  let all = $state<SessionMeta[]>([]);
++  const recent = $derived(all.filter((m) => m.id !== activeWork.work?.id).slice(0, 3));
++  onMount(async () => { try { all = await getSessions().list(); } catch { /* storage unavailable */ } });
++  const kind = $derived(activeWork.work?.kind);
+   let sel = $state<'All' | Category>('All'); let q = $state('');
+   const match = (t: (typeof tools)[number]) => !q.trim() || `${t.title} ${t.short} ${t.tile}`.toLowerCase().includes(q.trim().toLowerCase());
+   const shown = $derived(categories.filter((c) => sel === 'All' || sel === c).map((c) => ({ c, list: tools.filter((t) => t.category === c && match(t)) })).filter((s) => s.list.length));
+@@ -15,6 +19,16 @@
+ </script>
+ <svelte:head><title>Free tools | Smart Edit</title><meta name="description" content="Free in-browser PDF, image and document tools: scan, edit, merge, split, compress and convert." /></svelte:head>
+ <h1>Tools</h1>
++{#if activeWork.work}
++  {@const w = activeWork.work}
++  <section class="openbar" aria-label="Open file">
++    <div class="grow"><small>Open file · {w.kind === 'pdf' ? 'PDF' : 'Picture'}</small><strong>{w.name}</strong>
++      <span class="sub">Tools that suit it open with it. Others are greyed out.</span></div>
++    <a class="btn small" href={studioHref(w.workspace as never, undefined, w.id)}>Open</a>
++    <button class="btn small ghost" type="button" onclick={() => activeWork.release()}>Clear</button>
++  </section>
++{/if}
++<WorkStorage always />
+ {#if recent.length}
+   <h2 style="margin-top:0">Continue</h2>
+   <ul class="rows" style="margin-bottom:18px">
+@@ -27,7 +41,10 @@
+ <h2 style="margin-top:0">Studios</h2>
+ <p class="muted" style="margin-top:0">Open a file once and move between tools without starting over.</p>
+ <div class="grid wscards">
+-  {#each workspaces as w (w.id)}<a class="card" href={studioHref(w.id)}><h3>{w.title}</h3><p>{w.short}</p></a>{/each}
++  {#each workspaces as w (w.id)}
++    {#if workspaceSupports(w, kind)}<a class="card" href={studioHref(w.id)}><h3>{w.title}</h3><p>{w.short}</p></a>
++    {:else}<div class="card off" aria-disabled="true"><h3>{w.title}</h3><p>{unsupportedNote(kind)}</p></div>{/if}
++  {/each}
+ </div>
+ <h2>All tools</h2>
+ <label class="sr-label" style="display:flex;margin-bottom:12px"><span class="sr">Search tools</span>
+@@ -37,7 +54,7 @@
+ </div>
+ {#each shown as s}
+   <div class="sec"><h2 style="color:{CATEGORY_COLOR[s.c]}">{s.c} Tools</h2>{#if sel === 'All'}<button class="link" type="button" onclick={() => (sel = s.c)}>See all →</button>{/if}</div>
+-  <div class="tiles">{#each s.list as t}<ToolTile href={toolHref(t.slug)} icon={t.slug} label={t.tile} color={CATEGORY_COLOR[t.category]} />{/each}</div>
++  <div class="tiles">{#each s.list as t}<ToolTile href={toolHref(t.slug)} icon={t.slug} label={t.tile} color={CATEGORY_COLOR[t.category]} unsupported={toolSupports(t.slug, kind) ? '' : unsupportedNote(kind)} />{/each}</div>
+ {:else}
+   <p class="muted">No tools match “{q}”.</p>
+ {/each}
+diff --git a/tests/active-work.test.ts b/tests/active-work.test.ts
+new file mode 100644
+index 0000000..4645f60
+--- /dev/null
++++ b/tests/active-work.test.ts
+@@ -0,0 +1,98 @@
++import 'fake-indexeddb/auto';
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
++import { StudioState, sendToTool } from '../src/lib/workspace.svelte';
++import { activeWork } from '../src/lib/active.svelte';
++import { getActiveId, setActiveId, ACTIVE_KEY } from '../src/lib/core/active';
++import { getSessions } from '../src/lib/core/session';
++import { getLibrary } from '../src/lib/core/library';
++import { toolSupports, workspaceById, workspaceSupports, workspaces } from '../src/lib/core/workspaces';
++
++const pdf = (s: string, name = 'r.pdf') => new File([s], name, { type: 'application/pdf' });
++const png = (s: string, name = 'a.png') => new File([s], name, { type: 'image/png' });
++const fakeStore = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), m }; };
++
++beforeEach(async () => { await getSessions().clearAll(); await getLibrary().clearAll(); activeWork.clear(); });
++
++describe('which tools suit which file', () => {
++  it('greys out tools that need the other kind of file, and lets everything through when nothing is open', () => {
++    expect(toolSupports('compress-pdf', 'pdf')).toBe(true);
++    expect(toolSupports('edit-image', 'pdf')).toBe(false);
++    expect(toolSupports('pdf-to-docx', 'pdf')).toBe(true);
++    expect(toolSupports('extract-text', 'pdf')).toBe(false);
++    expect(toolSupports('images-to-pdf', 'image')).toBe(true);
++    expect(toolSupports('organize-pdf', 'image')).toBe(false);
++    for (const t of workspaces.flatMap((w) => w.tabs)) expect(toolSupports(t, undefined)).toBe(true);
++  });
++  it('a studio is supported when any of its tools can take the file', () => {
++    expect(workspaceSupports(workspaceById('pdf')!, 'pdf')).toBe(true);
++    expect(workspaceSupports(workspaceById('pdf')!, 'image')).toBe(false);
++    expect(workspaceSupports(workspaceById('photo')!, 'pdf')).toBe(false);
++    expect(workspaceSupports(workspaceById('convert')!, 'pdf') && workspaceSupports(workspaceById('convert')!, 'image')).toBe(true);
++    expect(workspaceSupports(workspaceById('docs')!, 'pdf') && workspaceSupports(workspaceById('docs')!, 'image')).toBe(true);
++  });
++});
++
++describe('remembering the open work', () => {
++  it('stores only the session id, and survives broken storage', () => {
++    const s = fakeStore(); setActiveId('abc', s); expect(s.m.get(ACTIVE_KEY)).toBe('abc'); expect(getActiveId(s)).toBe('abc');
++    setActiveId(undefined, s); expect(getActiveId(s)).toBeUndefined();
++    const broken = { getItem() { throw new Error('no'); }, setItem() { throw new Error('no'); }, removeItem() { throw new Error('no'); } };
++    expect(getActiveId(broken)).toBeUndefined(); expect(() => setActiveId('x', broken)).not.toThrow();
++  });
++});
++
++describe('open work follows the person across studios', () => {
++  it('opening a file makes it the open work, with its edits saved as versions', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A'));
++    expect(activeWork.work).toMatchObject({ id: a.session!.id, kind: 'pdf', workspace: 'pdf' });
++    await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r-crop.pdf');
++    expect(activeWork.work!.name).toBe('r-crop.pdf');
++  });
++  it('another studio that has a tool for it opens the same file at the same edit, and Continue moves there', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A'));
++    await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r-crop.pdf');
++    const id = a.session!.id;
++    const docs = new StudioState('docs');
++    expect(await docs.load(id, (k) => workspaceSupports(workspaceById('docs')!, k))).toBe(true);
++    expect(await docs.file!.text()).toBe('B'); expect(docs.session!.versions).toHaveLength(2);
++    expect((await getSessions().get(id))!.workspace).toBe('docs');
++    // an edit made there is on the same chain, so the first studio sees it too
++    await docs.commit(new Blob(['C'], { type: 'application/pdf' }), 'Compress', 'r-compress.pdf');
++    const back = new StudioState('pdf'); await back.load(id);
++    expect(await back.file!.text()).toBe('C'); expect(back.session!.versions).toHaveLength(3);
++  });
++  it('keeps an undo: a version the person stepped back from is not what the next studio opens', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A'));
++    await a.commit(new Blob(['B'], { type: 'application/pdf' }), 'Crop', 'r2.pdf'); await a.undo();
++    const b = new StudioState('convert'); await b.load(a.session!.id);
++    expect(await b.file!.text()).toBe('A'); expect(b.canRedo).toBe(true);
++  });
++  it('a studio with no tool for the file refuses it and leaves the open work alone', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A'));
++    const photo = new StudioState('photo');
++    expect(await photo.load(a.session!.id, (k) => workspaceSupports(workspaceById('photo')!, k))).toBe(false);
++    expect(photo.file).toBeUndefined(); expect(activeWork.work!.id).toBe(a.session!.id);
++    expect((await getSessions().get(a.session!.id))!.workspace).toBe('pdf');
++  });
++  it('closing clears the open work but keeps the session to continue later; starting another file replaces it', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A')); const id = a.session!.id;
++    a.close(); expect(activeWork.work).toBeUndefined(); expect(await getSessions().get(id)).toBeDefined();
++    const b = new StudioState('photo'); await b.open(png('P'));
++    expect(activeWork.work!.id).toBe(b.session!.id); expect(activeWork.work!.kind).toBe('image');
++    await a.load(id); expect(activeWork.work!.id).toBe(id);   // Continue makes it the open work again
++  });
++  it('discarding the open work forgets it everywhere', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A')); const id = a.session!.id;
++    await a.discard(); expect(activeWork.work).toBeUndefined(); expect(await getSessions().get(id)).toBeUndefined();
++  });
++  it('sending a result to a tool in another studio makes it the open work', async () => {
++    await sendToTool(new Blob(['X'], { type: 'application/pdf' }), 'x.pdf', 'pdf-to-docx');
++    expect(activeWork.work).toMatchObject({ kind: 'pdf', workspace: 'docs' });
++  });
++  it('refresh forgets work that was deleted or expired', async () => {
++    const a = new StudioState('pdf'); await a.open(pdf('A'));
++    await getSessions().discard(a.session!.id); await activeWork.refresh();
++    expect(activeWork.work).toBeUndefined();
++  });
++});
+diff --git a/tests/work-limit.test.ts b/tests/work-limit.test.ts
+new file mode 100644
+index 0000000..bd4e5b5
+--- /dev/null
++++ b/tests/work-limit.test.ts
+@@ -0,0 +1,100 @@
++import 'fake-indexeddb/auto';
++import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
++vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
++import { StudioState, FULL_NOTE, FULL_OPEN_NOTE } from '../src/lib/workspace.svelte';
++import { activeWork, workUsage } from '../src/lib/active.svelte';
++import { Sessions, MemorySessionStore, WorkLimitError, WORK_LIMIT_BYTES, getSessions } from '../src/lib/core/session';
++import { getLibrary } from '../src/lib/core/library';
++
++const pdf = (s: string, name = 'r.pdf') => new File([s], name, { type: 'application/pdf' });
++const blob = (s: string) => new Blob([s], { type: 'application/pdf' });
++const setLimit = (n: number) => Object.assign(getSessions(), { limit: n });
++
++describe('the 100 MB limit', () => {
++  it('is 100 MB', () => { expect(WORK_LIMIT_BYTES).toBe(100 * 1024 * 1024); });
++
++  it('counts every piece of unfinished work together and reports almost full and full', async () => {
++    const s = new Sessions(new MemorySessionStore(), undefined, undefined, undefined, 10);
++    expect(await s.usage()).toMatchObject({ used: 0, limit: 10, near: false, full: false });
++    await s.start('pdf', pdf('AAAAAAAA'), 'a.pdf');                       // 8 of 10
++    expect(await s.usage()).toMatchObject({ used: 8, near: true, full: false });
++    await s.start('photo', new Blob(['BB'], { type: 'image/png' }), 'b.png');   // 10 of 10, across studios
++    expect(await s.usage()).toMatchObject({ used: 10, near: true, full: true });
++  });
++  it('refuses new work and new versions past the limit, and changes nothing when it refuses', async () => {
++    const s = new Sessions(new MemorySessionStore(), undefined, undefined, undefined, 10);
++    const a = await s.start('pdf', pdf('AAAAAA'), 'a.pdf');
++    await expect(s.start('pdf', pdf('BBBBB'), 'b.pdf')).rejects.toBeInstanceOf(WorkLimitError);
++    await expect(s.commit(a.id, blob('CCCCC'), 'Crop')).rejects.toBeInstanceOf(WorkLimitError);
++    expect((await s.get(a.id))!.versions).toHaveLength(1); expect(await s.totalBytes()).toBe(6); expect(await s.list()).toHaveLength(1);
++    expect((await s.commit(a.id, blob('CC'), 'Crop'))!.added).toBe(true);   // fits: saves as normal
++  });
++  it('an identical result is not an error even when full', async () => {
++    const s = new Sessions(new MemorySessionStore(), undefined, undefined, undefined, 6);
++    const a = await s.start('pdf', pdf('AAAAAA'), 'a.pdf');
++    expect((await s.commit(a.id, blob('AAAAAA'), 'Same'))!.added).toBe(false);
++  });
++  it('making room (delete, or keep only original and latest) lets saving resume', async () => {
++    const s = new Sessions(new MemorySessionStore(), undefined, undefined, undefined, 12);
++    const a = await s.start('pdf', pdf('AA'), 'a.pdf');
++    await s.commit(a.id, blob('BBBB'), 'One'); await s.commit(a.id, blob('CCCC'), 'Two');   // 10 of 12, three versions
++    await expect(s.commit(a.id, blob('DDDDDD'), 'Three')).rejects.toBeInstanceOf(WorkLimitError);
++    expect(await s.compactAll()).toBe(4);                                                    // drops the middle version
++    expect((await s.commit(a.id, blob('DDDDDD'), 'Three'))!.added).toBe(true);
++    await expect(s.start('pdf', pdf('X'), 'x.pdf')).rejects.toBeInstanceOf(WorkLimitError);   // full again
++    await s.discard(a.id);
++    expect((await s.start('pdf', pdf('X'), 'x.pdf')).versions).toHaveLength(1);                // deleting work makes room
++  });
++});
++
++describe('when unfinished work is full, other activity carries on but is not saved automatically', () => {
++  beforeEach(async () => { await getSessions().clearAll(); await getLibrary().clearAll(); activeWork.clear(); });
++  afterEach(() => { setLimit(WORK_LIMIT_BYTES); });
++
++  it('keeps an edit that does not fit in memory, warns, and still lets the person undo it', async () => {
++    setLimit(10);
++    const st = new StudioState('pdf'); await st.open(pdf('AAAA'));
++    expect(st.memoryOnly).toBe(false);
++    const h0 = st.head;
++    expect(await st.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf')).toBe(true);
++    expect(st.unsaved).toBe(true); expect(st.note).toBe(FULL_NOTE);
++    expect(await st.file!.text()).toBe('BBBBBBB'); expect(st.head).not.toBe(h0);
++    expect(st.session!.versions).toHaveLength(1);                 // nothing was written
++    expect(st.canUndo).toBe(true); expect(st.canRedo).toBe(false);
++    await st.undo();
++    expect(st.unsaved).toBe(false); expect(await st.file!.text()).toBe('AAAA'); expect(st.note).toBe(''); expect(st.head).toBe(h0);
++  });
++  it('the unsaved change follows the person into another studio, and a closing warning protects it', async () => {
++    setLimit(10);
++    const a = new StudioState('pdf'); await a.open(pdf('AAAA'));
++    await a.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf');
++    const b = new StudioState('docs'); expect(await b.load(a.session!.id)).toBe(true);
++    expect(b.unsaved).toBe(true); expect(await b.file!.text()).toBe('BBBBBBB');
++    const ask = vi.fn(() => false); vi.stubGlobal('confirm', ask);
++    expect(activeWork.release()).toBe(false); expect(ask).toHaveBeenCalled(); expect(activeWork.work).toBeDefined();   // stayed
++    ask.mockReturnValue(true); expect(activeWork.release()).toBe(true); expect(activeWork.work).toBeUndefined();     // chose to leave
++    vi.unstubAllGlobals();
++  });
++  it('saves again, with the unsaved change as a new version, once there is room', async () => {
++    setLimit(10);
++    const st = new StudioState('pdf'); await st.open(pdf('AAAA'));
++    await st.commit(blob('BBBBBBB'), 'Crop', 'r-crop.pdf'); expect(st.unsaved).toBe(true);
++    setLimit(100);                                                  // the person made room
++    expect(await st.commit(blob('CCCCCCC'), 'Stamp', 'r-stamp.pdf')).toBe(true);
++    expect(st.unsaved).toBe(false); expect(st.note).toBe(''); expect(st.session!.versions).toHaveLength(2);
++    expect(activeWork.unsaved).toBeUndefined(); expect(await st.file!.text()).toBe('CCCCCCC');
++  });
++  it('a new file that does not fit is used from memory, with a warning, and does not replace the open work', async () => {
++    setLimit(10);
++    const first = new StudioState('pdf'); await first.open(pdf('AAAAAAAA')); const openId = activeWork.work!.id;
++    const next = new StudioState('pdf'); await next.open(pdf('BBBBBBBB', 'b.pdf'));
++    expect(next.memoryOnly).toBe(true); expect(next.session).toBeUndefined(); expect(next.note).toBe(FULL_OPEN_NOTE);
++    expect(await next.file!.text()).toBe('BBBBBBBB'); expect(activeWork.work!.id).toBe(openId);
++    expect(await getSessions().list()).toHaveLength(1);
++  });
++  it('shows usage to the pages', async () => {
++    setLimit(10);
++    const st = new StudioState('pdf'); await st.open(pdf('AAAAAAAAA')); await workUsage.refresh();
++    expect(workUsage.used).toBe(9); expect(workUsage.near).toBe(true); expect(workUsage.full).toBe(false); expect(workUsage.percent).toBe(90);
++  });
++});

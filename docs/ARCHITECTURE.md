@@ -1,6 +1,6 @@
 # Smart Edit Web: architecture
 
-**Principle:** every tool runs in the browser. No uploads, no accounts (v1), no server code.
+**Principle:** every tool runs in the browser. No uploads, no accounts, no server code. The no-accounts rule is final and covers the Android app too: nothing is signed in or stored on a server, so there is nothing to delete.
 
 ## Stack
 SvelteKit (static adapter, prerendered) + TypeScript, deployed to Firebase Hosting. PWA via `src/service-worker.ts`.

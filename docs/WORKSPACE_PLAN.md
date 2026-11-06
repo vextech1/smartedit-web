@@ -54,4 +54,4 @@ The standalone `/tools/<slug>` pages stay (search landing pages, sitemap, SEO). 
 
 - Per-tool dirty tracking and a leave-guard for edits that are not applied yet (today every *applied* result is already saved).
 - Cross-device sync, export/import of sessions as a ZIP, File System Access folder saving on desktop Chrome.
-- Android app: reuse the same version-chain model on app-private storage.
+- Android app: reuse the same version-chain model on app-private storage. No accounts there either.
