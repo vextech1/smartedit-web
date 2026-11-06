@@ -6,11 +6,12 @@
   import { extractImages, skippedSummary, type ExtractResult } from '#lib/core/pdf-images.ts';
   import { pdfErrorMessage, zipBlob } from '#lib/core/files.ts';
   import { zipFiles } from '#lib/core/zip.ts';
+  import CrossingActions from '../CrossingActions.svelte';
 
   // Save the pictures stored inside this PDF. They are listed to download one by one or as a ZIP; the PDF itself does not change.
   const MIME = { jpg: 'image/jpeg', png: 'image/png', jp2: 'image/jp2' } as const;
   const SHOWN = 60;
-  interface Item { name: string; page: number; width: number; height: number; size: number; url: string; thumb: boolean; note?: string }
+  interface Item { name: string; page: number; width: number; height: number; size: number; url: string; thumb: boolean; editFile?: File; note?: string }
   let { source, name, oncancel }: { source: Uint8Array; name: string; oncancel: () => void } = $props();
   let skipSmall = $state(true);
   let busy = $state(false); let status = $state(''); let bad = $state(false);
@@ -28,7 +29,10 @@
     try {
       const r = await extractImages(source, { baseName: baseName(name), minSize: skipSmall ? 50 : 0 });
       res = r; total = r.images.length;
-      items = r.images.slice(0, SHOWN).map((i) => ({ name: i.name, page: i.page, width: i.width, height: i.height, size: i.bytes.length, url: blobUrl(i.bytes, MIME[i.format]), thumb: i.format !== 'jp2', note: i.note }));
+      items = r.images.slice(0, SHOWN).map((i) => {
+        const type = MIME[i.format], blob = new Blob([i.bytes as BlobPart], { type });
+        return { name: i.name, page: i.page, width: i.width, height: i.height, size: i.bytes.length, url: blobUrl(i.bytes, type), thumb: i.format !== 'jp2', editFile: type === 'image/jpeg' || type === 'image/png' ? new File([blob], i.name, { type }) : undefined, note: i.note };
+      });
       if (r.images.length > 1) { const z = zipFiles(r.images.map((i) => ({ name: i.name, bytes: i.bytes }))); zip = { url: blobUrl(z, 'application/zip'), bytes: z.length, name: `${baseName(name)}-images.zip` }; }
       else if (r.images.length === 1) { const i = r.images[0]; zip = { url: blobUrl(i.bytes, MIME[i.format]), bytes: i.bytes.length, name: i.name }; }
       status = '';
@@ -53,6 +57,7 @@
           <li>
             {#if it.thumb}<img class="thumb" src={it.url} alt="Picture from page {it.page}" loading="lazy" />{:else}<span class="thumb jp2 muted">JP2</span>{/if}
             <div class="nm"><strong>Page {it.page}</strong><span>{it.width}×{it.height} · {fmtBytes(it.size)}</span>{#if it.note}<span class="warn">{it.note}</span>{/if}</div>
+            {#if it.editFile}<CrossingActions source="pdf-image-result" files={[it.editFile]} />{/if}
             <a class="btn small" href={it.url} download={it.name} aria-label="Download {it.name}">Download</a>
           </li>
         {/each}

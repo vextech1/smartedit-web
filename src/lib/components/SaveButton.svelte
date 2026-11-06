@@ -1,7 +1,14 @@
 <script lang="ts">
   import { getLibrary, keepStorage } from '#lib/core/library.ts';
   import NextButton from './NextButton.svelte';
+  import CrossingActions from './CrossingActions.svelte';
+  import { kindOfName } from '#lib/core/workspaces.ts';
+  import { getStudio } from '#lib/workspace.svelte.ts';
   let { url, name }: { url: string; name: string } = $props();
+  const studio = getStudio();
+  const kind = $derived(kindOfName(name));
+  const crossingSource = $derived(studio?.workspace === 'image' && kind === 'image' ? 'image-result'
+    : studio?.workspace === 'document' && kind === 'image' ? 'pdf-image-result' : undefined);
   let state = $state<'idle' | 'busy' | 'saved' | 'failed' | 'full' | 'unavailable'>('idle');
   async function save() {
     state = 'busy';
@@ -20,6 +27,7 @@
 <button class="btn small ghost" type="button" onclick={save} disabled={state === 'busy' || state === 'saved'}
   aria-label={state === 'idle' ? `Save ${name} to My files` : undefined}
   title="Keep a copy in My files on this device">{state === 'saved' ? 'Saved ✓' : state === 'full' ? 'Storage full' : state === 'unavailable' ? 'Storage unavailable' : state === 'failed' ? 'Could not save' : state === 'busy' ? 'Saving…' : 'Save'}</button>
+{#if crossingSource}<CrossingActions source={crossingSource} {url} {name} />{/if}
 <NextButton {url} {name} />
 {#if state === 'full'}<span role="status" class="sub">This browser has no room left. Delete files in <a href="/library">My files</a> or download this one instead.</span>{/if}
 {#if state === 'unavailable'}<span role="status" class="sub">File storage is not available in this browser (this can happen in private browsing). Download the file to keep it.</span>{/if}

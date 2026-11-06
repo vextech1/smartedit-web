@@ -3,6 +3,7 @@
   import CameraCapture from './CameraCapture.svelte';
   import CornerEditor from './CornerEditor.svelte';
   import ResultRow from './ResultRow.svelte';
+  import CrossingActions from './CrossingActions.svelte';
   import FileDrop from './FileDrop.svelte';
   import { applyAdjust, NO_ADJUST, type Adjust } from '#lib/core/image-edit.ts';
   import { draw, loadBitmap, toBlob } from '#lib/core/image.ts';
@@ -144,6 +145,7 @@
           <div class="frame"><img src={p.thumb} alt="Scanned page {i + 1}" /></div>
           <span class="pick">Page {i + 1}</span>
           <div class="acts">
+            <CrossingActions source="scan-page" files={[new File([p.out], `scan-page-${i + 1}.jpg`, { type: 'image/jpeg' })]} />
             <button type="button" class="icon" aria-label="Move page {i + 1} earlier" disabled={i === 0} onclick={() => move(i, -1)}>◀</button>
             <button type="button" class="icon" aria-label="Adjust page {i + 1}" onclick={() => edit(p)}>✎</button>
             <button type="button" class="icon" aria-label="Remove page {i + 1}" onclick={() => remove(i)}>✕</button>

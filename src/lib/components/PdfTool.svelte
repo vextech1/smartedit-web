@@ -5,6 +5,7 @@
   import { fmtBytes } from '#lib/core/format.ts';
   import { imagesToPdf, mergePdfs, UnreadablePdfError, type PageSize } from '#lib/core/pdf.ts';
   import { picturesToJpegs } from '#lib/core/pdf-pictures.ts';
+  import CrossingActions from './CrossingActions.svelte';
 
   let { mode }: { mode: 'images-to-pdf' | 'merge-pdf' } = $props();
   // svelte-ignore state_referenced_locally
@@ -68,4 +69,7 @@
 </ul>
 <button class="btn" type="button" style="margin-top:14px" disabled={busy || items.length < (isImages ? 1 : 2)} onclick={run}>{isImages ? 'Create PDF' : 'Merge PDFs'}</button>
 <p role="status" aria-live="polite" class:warn={bad} class:muted={!bad}>{status}</p>
-{#if result}<ResultRow name={result.name} bytes={result.bytes} url={result.url} filename={result.name} />{/if}
+{#if result}
+  <ResultRow name={result.name} bytes={result.bytes} url={result.url} filename={result.name} />
+  {#if isImages}<CrossingActions source="image-pdf-result" url={result.url} name={result.name} />{/if}
+{/if}

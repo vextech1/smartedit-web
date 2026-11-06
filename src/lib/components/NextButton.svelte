@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { getStudio, sendToTool } from '#lib/workspace.svelte.ts';
+  import { getStudio, sendTo, sendToTool } from '#lib/workspace.svelte.ts';
   import { toolBySlug } from '#lib/tools.ts';
   import { nextSteps, kindOfName, fileKind, workspaceById, type NextStep } from '#lib/core/workspaces.ts';
+  import { isCrossingTarget } from '#lib/core/crossings.ts';
   let { url, name }: { url: string; name: string } = $props();
   const studio = getStudio();
   const kind = $derived(kindOfName(name));   // by file name, so no next steps are offered for ZIPs and Word files
@@ -27,7 +28,12 @@
   async function go(s: NextStep) {
     if (studio && canKeep && s.workspace === studio.workspace) return keep(s);   // same studio: stay in the session
     busy = true; msg = '';
-    try { await sendToTool(await fetchBlob(), name, s.slug); dlg?.close(); } catch { msg = 'Could not open that tool.'; }
+    try {
+      const blob = await fetchBlob();
+      if (isCrossingTarget(s.workspace, s.slug)) await sendTo(s.workspace, [new File([blob], name, { type: blob.type })], s.slug);
+      else await sendToTool(blob, name, s.slug);
+      dlg?.close();
+    } catch { msg = 'Could not open that tool.'; }
     busy = false;
   }
 </script>

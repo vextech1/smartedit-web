@@ -6,7 +6,8 @@ import { getSessions, WorkLimitError, type Sessions, type SessionMeta } from '#l
 import { getLibrary, keepStorage } from '#lib/core/library.ts';
 import { setPending } from '#lib/core/handoff.ts';
 import { activeWork, workUsage } from '#lib/active.svelte.ts';
-import { fileKind, studioHref, workspaceFor, type FileKind, type WorkspaceId } from '#lib/core/workspaces.ts';
+import { fileKind, studioHref, tabInput, workspaceById, workspaceFor, type FileKind, type WorkspaceId } from '#lib/core/workspaces.ts';
+import { STUDIO_CROSSINGS } from '#lib/core/crossings.ts';
 
 const KEY = Symbol('studio');
 export const FULL_NOTE = 'Unfinished work is using all 100 MB, so changes are not saved automatically. Download your work, or finish and delete older work to make room.';
@@ -141,4 +142,35 @@ export async function sendToTool(blob: Blob, name: string, slug: string) {
   } catch {
     setPending([file]); await goto(studioHref(w.id, slug));
   }
+}
+
+/** Send one or more files to a studio tab, staging inputs or starting a new session according to the crossing registry. */
+export async function sendTo(studio: WorkspaceId, files: File[], tab: string) {
+  const workspace = workspaceById(studio);
+  if (!workspace?.tabs.includes(tab) || !files.length || !files.every((file) => {
+    const kind = fileKind(file.type);
+    return !!kind && kind === tabInput(tab);
+  })) throw new Error('Unsupported studio handoff');
+
+  const crossing = STUDIO_CROSSINGS.find((item) => item.studio === studio && item.tab === tab);
+  const href = studioHref(studio, tab);
+  if (crossing?.delivery === 'pending') {
+    setPending(files);
+    await goto(href);
+    return;
+  }
+
+  const [first, ...rest] = files;
+  let session: SessionMeta;
+  try {
+    session = await getSessions().start(studio, first, first.name);
+  } catch {
+    setPending(files);
+    await goto(href);
+    return;
+  }
+  void keepStorage();
+  activeWork.set(session);
+  if (rest.length) setPending(rest);
+  await goto(studioHref(studio, tab, session.id));
 }

@@ -2,14 +2,15 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
 import { goto } from '$app/navigation';
-import { StudioState, sendToTool } from '../src/lib/workspace.svelte';
+import { StudioState, sendTo, sendToTool } from '../src/lib/workspace.svelte';
 import { getSessions, IdbSessionStore, Sessions } from '../src/lib/core/session';
 import { getLibrary } from '../src/lib/core/library';
+import { takePending } from '../src/lib/core/handoff';
 
 const pdf = (s: string, name = 'r.pdf') => new File([s], name, { type: 'application/pdf' });
 const png = (s: string) => new Blob([s], { type: 'image/png' });
 
-beforeEach(async () => { await getSessions().clearAll(); await getLibrary().clearAll(); vi.mocked(goto).mockClear(); });
+beforeEach(async () => { takePending(() => true); await getSessions().clearAll(); await getLibrary().clearAll(); vi.mocked(goto).mockClear(); });
 
 describe('IndexedDB session store', () => {
   it('round-trips versions, bytes, undo and deletion', async () => {
@@ -64,5 +65,32 @@ describe('studio state', () => {
     const [m] = await getSessions().list('image'); expect(m.name).toBe('scan.png');
     expect(vi.mocked(goto)).toHaveBeenCalledWith(`/studio/image?tab=edit-image&s=${m.id}`);
     await sendToTool(new Blob(['x'], { type: 'application/zip' }), 'a.zip', 'edit-image'); expect(vi.mocked(goto)).toHaveBeenCalledTimes(1);   // ZIPs are ignored
+  });
+  it('sendTo stages image inputs for PDF creation without replacing the source session', async () => {
+    const source = await getSessions().start('image', new File(['original'], 'photo.png', { type: 'image/png' }), 'photo.png');
+    const input = new File(['photo'], 'photo.png', { type: 'image/png' });
+    await sendTo('document', [input], 'images-to-pdf');
+    expect(vi.mocked(goto)).toHaveBeenCalledWith('/studio/document?tab=images-to-pdf');
+    expect(takePending((file) => file.type.startsWith('image/')).files).toEqual([input]);
+    expect(await getSessions().get(source.id)).toBeDefined();
+    expect(await getSessions().list('document')).toHaveLength(0);
+  });
+  it('sendTo stages photos for OCR and starts fresh Image Studio sessions for editable pictures', async () => {
+    const photo = new File(['photo'], 'page.jpg', { type: 'image/jpeg' });
+    await sendTo('document', [photo], 'extract-text');
+    expect(vi.mocked(goto)).toHaveBeenLastCalledWith('/studio/document?tab=extract-text');
+    expect(takePending((file) => file.type.startsWith('image/')).files).toEqual([photo]);
+
+    await sendTo('image', [photo], 'edit-image');
+    const [session] = await getSessions().list('image');
+    expect(session.name).toBe('page.jpg');
+    expect(vi.mocked(goto)).toHaveBeenLastCalledWith(`/studio/image?tab=edit-image&s=${session.id}`);
+  });
+  it('sendTo stages multiple files and rejects an input kind the target tab cannot accept', async () => {
+    const photos = [new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })];
+    await sendTo('document', photos, 'images-to-pdf');
+    expect(takePending((file) => file.type.startsWith('image/')).files).toEqual(photos);
+    await expect(sendTo('image', [pdf('no')], 'edit-image')).rejects.toThrow('Unsupported studio handoff');
+    expect(vi.mocked(goto)).toHaveBeenCalledTimes(1);
   });
 });

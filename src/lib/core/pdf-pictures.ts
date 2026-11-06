@@ -23,13 +23,19 @@ export async function picturesToJpegs(files: Blob[], onStatus: (text: string) =>
 }
 
 export type PictureFormat = 'image/jpeg' | 'image/png';
-/** Render every page of a PDF as a picture. Files are named `report-page-01.jpg`, padded to the page count. */
-export async function pdfToPictures(bytes: Uint8Array, name: string, fmt: PictureFormat, dpi: number, onStatus: (text: string) => void = () => {}): Promise<{ name: string; bytes: Uint8Array }[]> {
+export async function pdfPageCount(bytes: Uint8Array): Promise<number> {
   const doc = await openPdf(bytes);
+  try { return doc.numPages; } finally { closePdf(doc); }
+}
+/** Render every page of a PDF as a picture. Files are named `report-page-01.jpg`, padded to the page count. */
+export async function pdfToPictures(bytes: Uint8Array, name: string, fmt: PictureFormat, dpi: number, onStatus: (text: string) => void = () => {}, page?: number): Promise<{ name: string; bytes: Uint8Array }[]> {
+  const doc = await openPdf(bytes);
+  if (page !== undefined && (!Number.isInteger(page) || page < 1 || page > doc.numPages)) { closePdf(doc); throw new RangeError('Choose a page in this PDF.'); }
   const ext = fmt === 'image/png' ? 'png' : 'jpg', base = baseName(name), pad = String(doc.numPages).length;
   const files: { name: string; bytes: Uint8Array }[] = [];
   try {
-    for (let i = 1; i <= doc.numPages; i++) {
+    const first = page ?? 1, last = page ?? doc.numPages;
+    for (let i = first; i <= last; i++) {
       onStatus(`Converting page ${i} of ${doc.numPages}…`);
       const canvas = await renderPage(doc, i, { scale: dpi / 72 });
       const blob = await toBlob(canvas, fmt, 0.9);

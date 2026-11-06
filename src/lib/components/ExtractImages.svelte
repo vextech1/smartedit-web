@@ -6,10 +6,11 @@
   import { extractImages, skippedSummary, type ExtractResult } from '#lib/core/pdf-images.ts';
   import { pdfErrorMessage, readBytes, zipBlob } from '#lib/core/files.ts';
   import { zipFiles } from '#lib/core/zip.ts';
+  import CrossingActions from './CrossingActions.svelte';
 
   const MIME = { jpg: 'image/jpeg', png: 'image/png', jp2: 'image/jp2' } as const;
   const SHOWN = 120;
-  interface Item { name: string; page: number; width: number; height: number; size: number; url: string; thumb: boolean; note?: string }
+  interface Item { name: string; page: number; width: number; height: number; size: number; url: string; thumb: boolean; editFile?: File; note?: string }
   let file = $state<File | null>(null);
   let skipSmall = $state(true);
   let status = $state(''); let bad = $state(false); let busy = $state(false);
@@ -28,8 +29,9 @@
       const r = await extractImages(await readBytes(file!), { baseName: baseName(file!.name), minSize: skipSmall ? 50 : 0 });
       res = r; total = r.images.length;
       items = r.images.slice(0, SHOWN).map((i) => {
-        const url = URL.createObjectURL(new Blob([i.bytes as BlobPart], { type: MIME[i.format] })); urls.push(url);
-        return { name: i.name, page: i.page, width: i.width, height: i.height, size: i.bytes.length, url, thumb: i.format !== 'jp2', note: i.note };
+        const type = MIME[i.format], blob = new Blob([i.bytes as BlobPart], { type }), url = URL.createObjectURL(blob); urls.push(url);
+        const editFile = type === 'image/jpeg' || type === 'image/png' ? new File([blob], i.name, { type }) : undefined;
+        return { name: i.name, page: i.page, width: i.width, height: i.height, size: i.bytes.length, url, thumb: i.format !== 'jp2', editFile, note: i.note };
       });
       if (r.images.length > 1) {
         const z = zipFiles(r.images.map((i) => ({ name: i.name, bytes: i.bytes })));
@@ -65,6 +67,7 @@
           <div class="frame">{#if it.thumb}<img src={it.url} alt="Picture from page {it.page}" loading="lazy" />{:else}<span class="muted">JPEG 2000</span>{/if}</div>
           <div class="sub">Page {it.page} · {it.width}×{it.height} · {fmtBytes(it.size)}</div>
           {#if it.note}<div class="sub warn">{it.note}</div>{/if}
+          {#if it.editFile}<CrossingActions source="pdf-image-result" files={[it.editFile]} />{/if}
           <div class="acts"><a class="btn small" href={it.url} download={it.name}>Download</a></div>
         </li>
       {/each}

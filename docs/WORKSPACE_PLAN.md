@@ -31,6 +31,7 @@ The standalone `/tools/<slug>` pages stay (search landing pages, sitemap, SEO). 
   - **Keep editing** (same kind of file): commit the result as a new version; the current tab reloads on it.
   - **Send to…** (other kinds or other studios): starts a session in the target studio at the right tab.
   - suggestions come from `nextSteps()` in `core/workspaces.ts`, by file type.
+- **Cross-studio actions:** `core/crossings.ts` is the single action table; `sendTo(studio, files, tab)` validates the target and either stages transient inputs in the pending-file handoff or starts a new target session. Image-to-PDF and image OCR are staged, so the source photo session stays in Continue and a created PDF starts its own Document Studio session. PDF page images and scanned pages start Image Studio sessions. PDF-to-images keeps its ZIP option and can render one selected page; individual JPEG/PNG results can open in Image Studio.
 - **Tabs stay alive** while the head version has not changed, so a half-finished edit in one tab survives a look at another. A tab whose input is out of date reloads when opened.
 
 ## 4. Screens

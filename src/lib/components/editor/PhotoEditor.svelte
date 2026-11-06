@@ -11,6 +11,7 @@
   import { workspaceById } from '#lib/core/workspaces.ts';
   import { toolBySlug } from '#lib/tools.ts';
   import ToolView from '../ToolView.svelte';
+  import CrossingActions from '../CrossingActions.svelte';
   import Icon from './Icon.svelte';
   import Dock from './Dock.svelte';
   import ToolSheet from './ToolSheet.svelte';
@@ -249,6 +250,7 @@
     <div class="pmenu" role="menu">
       {#if st.session}<button role="menuitem" type="button" onclick={() => menuDo(() => (versions = true))}>Versions ({st.session.versions.length})</button>{/if}
       <button role="menuitem" type="button" onclick={() => menuDo(oncopy)} disabled={saved === 'ok'}>{saved === 'ok' ? 'Saved to My files ✓' : saved === 'failed' ? 'Could not save' : 'Save to My files'}</button>
+      {#if st.file}<CrossingActions source="image-menu" files={[st.file]} menuItem />{/if}
       {#if st.session}<button role="menuitem" type="button" onclick={() => menuDo(() => st.togglePin())}>{st.session.pinned ? 'Unpin' : 'Pin (never expires)'}</button>{/if}
       {#if st.session}<button role="menuitem" type="button" onclick={() => menuDo(onremove)}>Delete this work</button>{/if}
       <button role="menuitem" type="button" onclick={chooseReplacement}>Replace photo</button>
