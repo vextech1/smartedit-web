@@ -18,15 +18,22 @@
   }
   onMount(load);
 
+  /** The saved bytes for this work are gone. Say so and repair the list, instead of doing nothing. */
+  async function missing(m: SessionMeta) {
+    try { await getSessions().heal(m.id); } catch { /* ignore */ }
+    if (activeWork.work?.id === m.id) await activeWork.refresh();
+    msg = `“${m.name}” could not be found on this device any more, so it was removed from the list.`;
+    await load();
+  }
   async function download(m: SessionMeta) {
-    const f = await getSessions().file(m.id); if (!f) return;
+    const f = await getSessions().file(m.id); if (!f) return missing(m);
     const url = URL.createObjectURL(f); const a = document.createElement('a'); a.href = url; a.download = f.name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
   async function keep(m: SessionMeta) {
     msg = '';
     try {
-      const f = await getSessions().file(m.id); if (!f) return;
+      const f = await getSessions().file(m.id); if (!f) return missing(m);
       const lib = getLibrary(), meta = await lib.save(f.name, f); void keepStorage(); void lib.indexFile(meta.id).catch(() => {});
       msg = `Saved “${f.name}” to My files.`;
     } catch { msg = 'Could not save to My files.'; }

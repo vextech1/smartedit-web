@@ -7,6 +7,7 @@
   import { fmtBytes } from '#lib/core/format.ts';
   import { getLibrary, kindOf, type LibFile } from '#lib/core/library.ts';
   import { routeFor, setPending, ago } from '#lib/core/handoff.ts';
+  import { screenFiles, skippedMessage } from '#lib/core/pick.ts';
   import ToolTile from '#lib/components/ToolTile.svelte';
   import WorkStorage from '#lib/components/WorkStorage.svelte';
   import { toolHref, workspaceById, studioHref, toolSupports, unsupportedNote } from '#lib/core/workspaces.ts';
@@ -20,9 +21,10 @@
   let recent = $state<LibFile[]>([]);
   let unfinished = $state<SessionMeta[]>([]);
 
-  function take(list: FileList | null) {
-    const files = Array.from(list ?? []); const to = routeFor(files);
-    if (!to) { msg = 'Choose a PDF or an image.'; return; }
+  async function take(list: FileList | null) {
+    // Copy the list now: the input is cleared right after this call, and a dropped list is only valid during the event.
+    const { files, skipped } = await screenFiles(Array.from(list ?? []), 'image/*,application/pdf'); const to = routeFor(files);
+    if (!to) { msg = skippedMessage(skipped) || 'Choose a PDF or an image.'; return; }
     msg = ''; setPending(files); goto(to);
   }
   async function loadRecent() {

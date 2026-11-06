@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { getStudio } from '#lib/workspace.svelte.ts';
-  import { ago, takePending } from '#lib/core/handoff.ts';
+  import { ago } from '#lib/core/handoff.ts';
   import { fmtBytes, baseName } from '#lib/core/format.ts';
   import { closePdf, openPdf, renderPage } from '#lib/core/pdf-render.ts';
   import { readBytes, pdfBlob, pdfErrorMessage } from '#lib/core/files.ts';
@@ -11,20 +11,17 @@
   import { watermarkPdf } from '#lib/core/pdf-watermark.ts';
   import { compressPdfImages, PRESETS, type PresetKey } from '#lib/core/pdf-compress.ts';
   import { jpegRecompressor, toBlob } from '#lib/core/image.ts';
-  import { initialPages, movePage, pageIndex, PDF_TAB_SHEET, removePage, rotatePage, type PdfSheetId } from '#lib/core/pdf-studio.ts';
+  import { initialPages, movePage, pageIndex, removePage, rotatePage } from '#lib/core/pdf-studio.ts';
   import { clampStage, panBy as panStage, pinchTo, pointDistance, pointMidpoint, zoomAt, type StagePoint, type StageTransform } from '#lib/core/stage-gesture.ts';
   import Icon from './Icon.svelte';
   import Dock from './Dock.svelte';
   import ToolSheet from './ToolSheet.svelte';
-  import PdfMergeSheet from './PdfMergeSheet.svelte';
-  import PdfSplitSheet from './PdfSplitSheet.svelte';
 
-  type Sheet = PdfSheetId;
+  type Sheet = 'pages' | 'crop' | 'stamp' | 'watermark' | 'info' | 'compress';
   let { onclose, onremove, oncopy, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; saved: 'idle' | 'ok' | 'failed' } = $props();
   const st = getStudio()!;
   const DOCK = [
-    { id: 'pages', label: 'Pages', icon: 'tools' }, { id: 'merge', label: 'Merge', icon: 'merge' }, { id: 'split', label: 'Split', icon: 'split' },
-    { id: 'crop', label: 'Crop', icon: 'crop' },
+    { id: 'pages', label: 'Pages', icon: 'tools' }, { id: 'crop', label: 'Crop', icon: 'crop' },
     { id: 'stamp', label: 'Stamp', icon: 'draw' }, { id: 'watermark', label: 'Watermark', icon: 'watermark' },
     { id: 'info', label: 'Info', icon: 'more' }, { id: 'compress', label: 'Compress', icon: 'export' }
   ];
@@ -55,8 +52,6 @@
   let zoom = $state<StageTransform>({ scale: 1, x: 0, y: 0 });
   let stageW = $state(0); let stageH = $state(0);
   let token = 0;
-  let mergeExtras = $state<File[]>([]);   // PDFs picked together with this one on the Home page, waiting to be merged
-  let lastTab = '';
   const pointers = new Map<number, StagePoint>();
   let pinchStart: { view: StageTransform; distance: number; midpoint: StagePoint } | null = null;
   let panStart: { id: number; point: StagePoint; view: StageTransform } | null = null;
@@ -106,8 +101,6 @@
       source = bytes; pageTotal = total; pages = initialPages(total); current = 0;
       zoom = { scale: 1, x: 0, y: 0 };
       sheet = null; bad = false; status = '';
-      const waiting = takePending((f) => f.type === 'application/pdf').files;   // several PDFs picked at once mean a merge
-      if (waiting.length) { mergeExtras = waiting; sheet = 'merge'; }
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(file);
     } catch (e) {
@@ -130,13 +123,6 @@
     void p?.index; void p?.rotate;
     if (bytes && p && canvas) untrack(() => void renderCurrent(my, bytes, p));
   });
-  // Opening a tab from elsewhere (Tools page tiles, the Next steps dialog) opens its sheet here.
-  $effect(() => {
-    const tab = st.tab; void source;
-    if (!source) return;
-    untrack(() => { if (tab !== lastTab) { lastTab = tab; const wanted = PDF_TAB_SHEET[tab]; if (wanted) choose(wanted); } });
-  });
-  $effect(() => { if (sheet !== 'merge') mergeExtras = []; });
   onMount(() => () => { token++; if (downloadUrl) URL.revokeObjectURL(downloadUrl); });
 
   function choose(id: string) { sheet = id as Sheet; menu = false; status = ''; bad = false; if (id === 'info') void loadInfo(); }
@@ -198,7 +184,6 @@
       let output: Uint8Array;
       let label: string;
       switch (sheet) {
-        case 'merge': case 'split': return;   // these sheets apply themselves
         case 'pages': output = await buildFromPages(source, pages); label = 'Pages'; break;
         case 'crop': output = await cropPdf(source, { top: Number(margins.top) * MM, right: Number(margins.right) * MM, bottom: Number(margins.bottom) * MM, left: Number(margins.left) * MM }); label = 'Crop'; break;
         case 'stamp': output = (await stampPdf(source, stamp)).bytes; label = 'Stamp'; break;
@@ -219,10 +204,6 @@
     } finally { busy = false; }
   }
 
-  async function commitMerge(bytes: Uint8Array) {
-    const added = await st.commit(pdfBlob(bytes), 'Merge', `${baseName(currentName())}-merged.pdf`);
-    sheet = null; status = added ? '' : 'No changes to save.';
-  }
   function move(index: number, offset: number) { pages = movePage(pages, index, offset); }
   function rotate(index: number, angle: number) { pages = rotatePage(pages, index, angle); }
   function remove(index: number) { pages = removePage(pages, index); current = pageIndex(current, pages.length); }
@@ -279,10 +260,6 @@
           </li>
         {/each}</ol>
       </ToolSheet>
-    {:else if sheet === 'merge' && source}
-      <PdfMergeSheet current={{ name: currentName(), bytes: source, pages: pageTotal }} extras={mergeExtras} oncommit={commitMerge} oncancel={() => (sheet = null)} />
-    {:else if sheet === 'split' && source}
-      <PdfSplitSheet {source} name={currentName()} pages={pageTotal} oncancel={() => (sheet = null)} />
     {:else if sheet === 'crop'}
       <ToolSheet title="Crop" onreset={reset} onapply={apply} oncancel={() => (sheet = null)} {busy}>
         <p class="muted">Trim the same margins from every page. Values are in millimetres.</p>

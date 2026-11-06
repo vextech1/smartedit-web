@@ -14,10 +14,16 @@
     ['/settings', 'Settings', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.5-2.3 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.5 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.5z']
   ] as const;
   const isCurrent = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href) || (href === '/tools' && page.url.pathname.startsWith('/studio')));
-  // Work that has not been touched for the chosen number of days is removed (pinned work stays).
+  // Work that has not been touched for the chosen number of days is removed (pinned work stays). Then any work whose saved
+  // bytes have gone missing (an interrupted save, cleared or evicted storage) is repaired, and leftover bytes are swept up.
   onMount(async () => {
-    try { await getSessions().purgeExpired(getRetentionDays()); } catch { /* storage unavailable */ }
-    await activeWork.refresh();   // after the purge, so expired work is forgotten
+    try {
+      const s = getSessions();
+      await s.purgeExpired(getRetentionDays());
+      await s.healAll();
+      void s.sweepBlobs().catch(() => { /* leftovers are harmless; try again next time */ });
+    } catch { /* storage unavailable */ }
+    await activeWork.refresh();   // after the purge and repair, so expired or empty work is forgotten
   });
   const canonical = $derived(SITE.origin + (page.url.pathname === '/' ? '/' : page.url.pathname.replace(/\/$/, '')));
   // Tool pages carry their tool in page data; everything else shares the site name.

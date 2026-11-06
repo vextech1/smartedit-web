@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -14,6 +15,7 @@
   let out = $state<{ name: string; bytes: number; url: string } | null>(null);
 
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the result file when the tool is closed
   function pick(f: File[]) { clear(); file = f[0]; }
 
   async function run() {

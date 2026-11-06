@@ -15,7 +15,7 @@
   let text = $state(''); let kind = $state<Kind | 'all'>('all'); let trash = $state(false);
   let searchOpen = $state(false); let filterOpen = $state(false); let menu = $state('');
   let total = $state(0); let quota = $state(0);
-  let msg = $state('Loading…'); let unavailable = $state(false); let indexing = $state('');
+  let msg = $state('Loading…'); let unavailable = $state(false); let indexing = $state(''); let notice = $state('');
   let renaming = $state(''); let newName = $state('');
 
   async function refresh() {
@@ -46,7 +46,12 @@
   $effect(() => { text; kind; trash; tab; if (unavailable) return; clearTimeout(timer); timer = setTimeout(refresh, text ? 200 : 0); return () => clearTimeout(timer); });
 
   async function download(f: Hit['file']) {
-    const file = await getLibrary().file(f.id); if (!file) return;
+    const file = await getLibrary().file(f.id);
+    if (!file) {   // the saved bytes are gone: say so and drop the empty entry, instead of doing nothing
+      try { await getLibrary().removeForever(f.id); } catch { /* ignore */ }
+      await refresh(); notice = `“${f.name}” could not be found on this device any more, so it was removed from the list.`;
+      return;
+    }
     const url = URL.createObjectURL(file); const a = document.createElement('a'); a.href = url; a.download = f.name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
@@ -93,6 +98,7 @@
       {#each tabs as [t, l]}<button type="button" role="tab" aria-selected={tab === t} class:on={tab === t} onclick={() => (tab = t)}>{l}</button>{/each}
     </div>
   {/if}
+  {#if notice}<p role="alert" class="warn">{notice}</p>{/if}
   <p role="status" class="muted">{msg}{#if indexing} {indexing}{/if}</p>
   <ul class="frows">
     {#each hits as { file: f, snippet } (f.id)}

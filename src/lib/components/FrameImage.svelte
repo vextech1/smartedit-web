@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import SaveButton from './SaveButton.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -23,16 +24,20 @@
   const phoneOpts = () => ({ style: pStyle, color: pColor, bg: pBg, c1: pC1, c2: pC2, shadow: pShadow, fit: pFit });
   const build = (long: number, screen: number) => (kind === 'wall' ? drawWallFrame(bmp!, wallOpts(), long) : drawPhoneFrame(bmp!, phoneOpts(), screen));
 
+  let pickSeq = 0;   // the newest pick wins: a slower, older decode must close itself, not replace the current photo
+  onMount(() => () => { pickSeq++; bmp?.close(); bmp = null; if (outUrl) URL.revokeObjectURL(outUrl); });   // free the photo and exported file when the tool is closed
   async function pick(f: File[]) {
+    const my = ++pickSeq;
     msg = ''; bmp?.close(); bmp = null;
     try {
       const b = await loadBitmap(f[0]);
+      if (my !== pickSeq) { b.close(); return; }
       // Keep very large photos manageable: the frame is drawn from a copy no bigger than 3000 px.
       const k = Math.min(1, 3000 / Math.max(b.width, b.height));
       if (k < 1) { const c = document.createElement('canvas'); c.width = Math.round(b.width * k); c.height = Math.round(b.height * k); c.getContext('2d')!.drawImage(b.source, 0, 0, c.width, c.height); b.close(); bmp = { width: c.width, height: c.height, source: c, close: () => { c.width = 0; } }; }
       else bmp = b;
       name = f[0].name;
-    } catch { msg = 'That file could not be read as an image.'; }
+    } catch { if (my === pickSeq) msg = 'That file could not be read as an image.'; }
   }
 
   $effect(() => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -23,14 +24,15 @@
   const mmOf = (pt: number) => Math.round(pt / MM);
 
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; status = ''; bad = false; }
+  onMount(() => () => { token++; clear(); if (thumb) URL.revokeObjectURL(thumb); });   // free the result and preview when the tool is closed
   async function load(files: File[]) {
     const my = ++token; clear(); file = files[0]; total = 0; size = null; if (thumb) URL.revokeObjectURL(thumb); thumb = '';
     try {
       bytes = await readBytes(file);
       const sizes = await pageSizes(bytes); total = sizes.length; size = sizes[0] ?? null;
       const doc = await openPdf(bytes);
-      const blob = await toBlob(await renderPage(doc, 1, { maxSide: 420 }), 'image/jpeg', 0.75);
-      closePdf(doc);
+      let blob: Blob | null;
+      try { blob = await toBlob(await renderPage(doc, 1, { maxSide: 420 }), 'image/jpeg', 0.75); } finally { closePdf(doc); }
       if (blob && my === token) thumb = URL.createObjectURL(blob);
     } catch (e) { if (my === token) { bad = true; status = pdfErrorMessage(e, file.name); } }
   }

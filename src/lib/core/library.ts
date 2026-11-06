@@ -1,6 +1,7 @@
 // Saved files ("My files"): kept in the browser's own storage (IndexedDB) on this device, never uploaded.
 // The logic works against a small store interface so it can be tested in Node with MemoryStore.
 import { extractPdfTextFromBytes, fold, snippet, terms, MAX_CHARS } from './pdf-text.ts';
+import { createIdb, type IdbRun } from './idb.ts';
 
 export type Kind = 'pdf' | 'image' | 'text' | 'other';
 /** `indexed` is set once we have tried to read the file's text (even if it had none, like a scan), so we never retry. */
@@ -137,25 +138,12 @@ export class MemoryStore implements LibStore {
 
 /** IndexedDB store: metadata and file bytes live in separate object stores so listing never loads the files. */
 export class IdbStore implements LibStore {
-  private db?: Promise<IDBDatabase>;
-  private open() {
-    return (this.db ??= new Promise<IDBDatabase>((res, rej) => {
-      const r = indexedDB.open('smartedit-library', 2);
-      r.onupgradeneeded = () => {   // v1 had meta + data; v2 adds the extracted-text store. Existing files are indexed later by indexPending().
-        const db = r.result;
-        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('data')) db.createObjectStore('data');
-        if (!db.objectStoreNames.contains('text')) db.createObjectStore('text', { keyPath: 'id' });
-      };
-      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-    }));
-  }
-  private async tx(stores: string[], mode: IDBTransactionMode, run: (t: IDBTransaction) => IDBRequest | void) {
-    const t = (await this.open()).transaction(stores, mode);
-    const done = new Promise<void>((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-    const req = run(t); await done;
-    return req ? (req as IDBRequest).result : undefined;
-  }
+  private idb = createIdb('smartedit-library', 2, (db) => {   // v1 had meta + data; v2 adds the extracted-text store. Existing files are indexed later by indexPending().
+    if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
+    if (!db.objectStoreNames.contains('data')) db.createObjectStore('data');
+    if (!db.objectStoreNames.contains('text')) db.createObjectStore('text', { keyPath: 'id' });
+  });
+  private tx<T>(stores: string[], mode: IDBTransactionMode, run: IdbRun<T>) { return this.idb.tx(stores, mode, run); }
   async put(meta: LibFile, data: ArrayBuffer) { await this.tx(['meta', 'data'], 'readwrite', (t) => { t.objectStore('data').put(data, meta.id); t.objectStore('meta').put(meta); }); }
   async metas(): Promise<LibFile[]> { return (await this.tx(['meta'], 'readonly', (t) => t.objectStore('meta').getAll())) ?? []; }
   async data(id: string): Promise<ArrayBuffer | undefined> { return this.tx(['data'], 'readonly', (t) => t.objectStore('data').get(id)); }

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getLibrary, matchesAccept } from '#lib/core/library.ts';
   import { takePending } from '#lib/core/handoff.ts';
+  import { screenFiles, skippedMessage } from '#lib/core/pick.ts';
   import { getStudio } from '#lib/workspace.svelte.ts';
   import LibraryPicker from './LibraryPicker.svelte';
   // `fromSession` is false for secondary pickers (a logo, say) that must not receive the working file.
@@ -14,9 +15,12 @@
   let saved = $state(0);       // saved files that fit this tool
   let picking = $state(false);
   let expired = $state(false); // true when files timed out in transit from home page
-  const ok = (f: File) => accept.split(',').some((a) => (a.endsWith('/*') ? f.type.startsWith(a.slice(0, -1)) : f.type === a.trim()));
-  function take(list: FileList | null) {
-    const files = Array.from(list ?? []).filter(ok);
+  let notice = $state('');     // which files were turned away, and why
+  const ok = (f: File) => matchesAccept(f.type, accept);
+  async function take(list: FileList | null) {
+    // Copy the list now: the input is cleared right after this call, and a dropped list is only valid during the event.
+    const { files, skipped } = await screenFiles(Array.from(list ?? []), accept);
+    notice = skippedMessage(skipped);
     if (files.length) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }
   }
   function fromLibrary(files: File[]) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }
@@ -37,6 +41,7 @@
   ondrop={(e) => { e.preventDefault(); over = false; take(e.dataTransfer?.files ?? null); }}>
   {label}<small>{hint}</small>
 </label>
+{#if notice}<p class="warn" role="alert" style="margin:8px 0 0">{notice}</p>{/if}
 {#if expired}<p class="warn" role="alert" style="margin:8px 0 0">The page took too long to load and your files were cleared. Please choose them again.</p>{/if}
 {#if saved}<p style="margin:8px 0 0"><button class="btn small ghost" type="button" onclick={() => (picking = true)}>Choose from My files ({saved})</button></p>{/if}
 {#if picking}<LibraryPicker {accept} {multiple} onfiles={fromLibrary} onclose={() => (picking = false)} />{/if}

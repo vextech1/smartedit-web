@@ -2,6 +2,7 @@
 // storage (IndexedDB) on this device, never uploaded. Separate from My Files (library.ts) so the library stays tidy.
 // The logic works against a small store interface so it can be tested in Node with MemorySessionStore.
 import { fileKind, type FileKind } from './workspaces.ts';
+import { createIdb, type IdbRun } from './idb.ts';
 
 export interface Version { id: string; label: string; name: string; type: string; size: number; at: number }
 export interface SessionMeta {
@@ -18,6 +19,10 @@ export interface SessionStore {
   removeMeta(id: string): Promise<void>;
   putBlob(key: string, data: ArrayBuffer): Promise<void>;
   getBlob(key: string): Promise<ArrayBuffer | undefined>;
+  /** Whether the bytes for `key` are stored, without reading them. */
+  hasBlob(key: string): Promise<boolean>;
+  /** Every stored key, without reading the bytes (used to find leftovers). */
+  blobKeys(): Promise<string[]>;
   removeBlobs(keys: string[]): Promise<void>;
 }
 
@@ -99,21 +104,29 @@ export class Sessions {
       await this.compactMeta(m);   // free space by keeping only the Original and the current version, then try once more
       await this.store.putBlob(key(m, v), data);
     }
-    // A new result after an undo replaces whatever could have been redone (removed only once the new one is safely stored).
+    // A new result after an undo replaces whatever could have been redone.
     const dropped = m.versions.splice(m.head + 1);
-    if (dropped.length) await this.store.removeBlobs(dropped.map((x) => key(m, x)));
     m.versions.push(v);
     const old: Version[] = [];
     while (m.versions.length > this.max) old.push(...m.versions.splice(1, 1));   // oldest after the Original
-    if (old.length) await this.store.removeBlobs(old.map((x) => key(m, x)));
     m.head = m.versions.length - 1; m.name = v.name;
-    return { meta: await this.save(m), added: true };
+    // Save the list first, and only then delete the bytes it no longer mentions. If the tab closes in between, the worst case is
+    // some unreferenced bytes (swept later), never a list that names a version whose bytes are gone.
+    const meta = await this.save(m);
+    await this.discardBlobs(m, [...dropped, ...old]);
+    return { meta, added: true };
+  }
+  /** Delete bytes nothing refers to any more. Best effort: a failure only leaves leftovers for sweepBlobs(), it must not undo a saved change. */
+  private async discardBlobs(m: { id: string }, versions: Version[]) {
+    if (!versions.length) return;
+    try { await this.store.removeBlobs(versions.map((x) => key(m, x))); } catch { /* swept later */ }
   }
   private async compactMeta(m: SessionMeta) {
     const keep = new Set([0, m.head]), drop = m.versions.filter((_, i) => !keep.has(i));
-    if (drop.length) await this.store.removeBlobs(drop.map((v) => key(m, v)));
+    if (!drop.length) return;
     m.versions = m.versions.filter((_, i) => keep.has(i)); m.head = m.versions.length - 1;
-    await this.store.putMeta(m);
+    await this.store.putMeta(m);   // list first, bytes second (see commit)
+    await this.discardBlobs(m, drop);
   }
   /** For every piece of work, keep only the Original and the working version. Returns the bytes freed. */
   async compactAll(): Promise<number> {
@@ -124,10 +137,48 @@ export class Sessions {
   /** Keep only the Original and the working version. Frees space when the browser says storage is full. */
   async compact(id: string) { const m = await this.get(id); if (m) await this.compactMeta(m); return this.get(id); }
 
-  /** Move to a version. Returns the session, or undefined if the index is out of range. */
+  /** Move to a version. Returns the session, or undefined if the index is out of range or that version's bytes are gone
+   *  (the position is then left alone, so a damaged version can never become the one a session opens on). */
   async goTo(id: string, index: number): Promise<SessionMeta | undefined> {
     const m = await this.get(id); if (!m || index < 0 || index >= m.versions.length) return undefined;
+    if (!(await this.store.hasBlob(key(m, m.versions[index])))) return undefined;
     m.head = index; return this.save(m);
+  }
+
+  /** Repair a session whose bytes went missing (a closed tab, a cleared or evicted store): drop the versions that are gone and
+   *  point the head at the nearest earlier one that survived. Returns the session, or undefined when nothing is left to open
+   *  (the empty record is then removed). Does not touch the session's last-used time. */
+  async heal(id: string): Promise<SessionMeta | undefined> {
+    const m = await this.get(id); if (!m) return undefined;
+    const have = await Promise.all(m.versions.map((v) => this.store.hasBlob(key(m, v))));
+    if (have.every(Boolean)) return m;
+    const headId = m.versions[m.head]?.id, kept = m.versions.filter((_, i) => have[i]);
+    if (!kept.length) { await this.store.removeMeta(id); return undefined; }
+    let head = kept.findIndex((v) => v.id === headId);
+    if (head < 0) for (let i = m.head - 1; i >= 0 && head < 0; i--) if (have[i]) head = kept.findIndex((v) => v.id === m.versions[i].id);
+    if (head < 0) head = 0;
+    m.versions = kept; m.head = head; m.name = kept[head].name;
+    await this.store.putMeta(m);
+    return m;
+  }
+  /** heal() for every session. Returns how many needed repair. */
+  async healAll(): Promise<number> {
+    let n = 0;
+    for (const m of await this.store.metas()) {
+      const before = m.versions.length, after = (await this.heal(m.id))?.versions.length ?? 0;
+      if (after !== before) n++;
+    }
+    return n;
+  }
+  /** Delete stored bytes that no session refers to (left by an interrupted save or delete). A key must still be unreferenced after
+   *  `graceMs`, so bytes a save in another tab has just written but not yet listed are never removed. Returns how many were removed. */
+  async sweepBlobs(graceMs = 3000): Promise<number> {
+    const orphans = async () => { const live = new Set((await this.store.metas()).flatMap((m) => m.versions.map((v) => key(m, v)))); return (await this.store.blobKeys()).filter((k) => !live.has(k)); };
+    const first = await orphans(); if (!first.length) return 0;
+    if (graceMs > 0) await new Promise((r) => setTimeout(r, graceMs));
+    const still = new Set(await orphans()), gone = first.filter((k) => still.has(k));
+    if (gone.length) await this.store.removeBlobs(gone);
+    return gone.length;
   }
   async undo(id: string) { const m = await this.get(id); return m && m.head > 0 ? this.goTo(id, m.head - 1) : m; }
   async redo(id: string) { const m = await this.get(id); return m && m.head < m.versions.length - 1 ? this.goTo(id, m.head + 1) : m; }
@@ -140,7 +191,8 @@ export class Sessions {
 
   async discard(id: string) {
     const m = await this.get(id); if (!m) return;
-    await this.store.removeBlobs(m.versions.map((v) => key(m, v))); await this.store.removeMeta(id);
+    await this.store.removeMeta(id);   // the record first: a half-finished delete then leaves unreferenced bytes, not a listed session that cannot open
+    await this.discardBlobs(m, m.versions);
   }
   /** Remove sessions not used for `days` days. Pinned ones stay. 0 or less means never expire. Returns how many were removed. */
   async purgeExpired(days: number): Promise<number> {
@@ -167,26 +219,18 @@ export class MemorySessionStore implements SessionStore {
   async removeMeta(id: string) { this.m.delete(id); }
   async putBlob(k: string, data: ArrayBuffer) { this.b.set(k, data); }
   async getBlob(k: string) { return this.b.get(k); }
+  async hasBlob(k: string) { return this.b.has(k); }
+  async blobKeys() { return [...this.b.keys()]; }
   async removeBlobs(keys: string[]) { for (const k of keys) this.b.delete(k); }
   blobCount() { return this.b.size; }
 }
 
 /** IndexedDB store: metadata and file bytes live in separate object stores so listing never loads the files. */
 export class IdbSessionStore implements SessionStore {
-  private db?: Promise<IDBDatabase>;
-  private open() {
-    return (this.db ??= new Promise<IDBDatabase>((res, rej) => {
-      const r = indexedDB.open('smartedit-sessions', 1);
-      r.onupgradeneeded = () => { const db = r.result; db.createObjectStore('meta', { keyPath: 'id' }); db.createObjectStore('blob'); };
-      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-    }));
-  }
-  private async tx(stores: string[], mode: IDBTransactionMode, run: (t: IDBTransaction) => IDBRequest | void) {
-    const t = (await this.open()).transaction(stores, mode);
-    const done = new Promise<void>((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-    const req = run(t); await done;
-    return req ? (req as IDBRequest).result : undefined;
-  }
+  private idb = createIdb('smartedit-sessions', 1, (db) => { db.createObjectStore('meta', { keyPath: 'id' }); db.createObjectStore('blob'); });
+  private tx<T>(stores: string[], mode: IDBTransactionMode, run: IdbRun<T>) { return this.idb.tx(stores, mode, run); }
+  async hasBlob(k: string) { return ((await this.tx(['blob'], 'readonly', (t) => t.objectStore('blob').count(k))) as number) > 0; }
+  async blobKeys(): Promise<string[]> { return ((await this.tx(['blob'], 'readonly', (t) => t.objectStore('blob').getAllKeys())) ?? []) as string[]; }
   async metas(): Promise<SessionMeta[]> { return (await this.tx(['meta'], 'readonly', (t) => t.objectStore('meta').getAll())) ?? []; }
   async putMeta(meta: SessionMeta) { await this.tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(meta); }); }
   async removeMeta(id: string) { await this.tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').delete(id); }); }

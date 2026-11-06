@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import SaveButton from './SaveButton.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -17,9 +18,13 @@
   let drag: { x: number; y: number; px: number; py: number } | null = null;
   const ratio = $derived(RATIOS.find((r) => r.id === ratioId)?.r ?? 0);
 
+  let pickSeq = 0;   // the newest pick wins: a slower, older decode must close itself, not replace the current photo
+  onMount(() => () => { pickSeq++; bmp?.close(); bmp = null; if (outUrl) URL.revokeObjectURL(outUrl); });   // free the photo and exported file when the tool is closed
   async function pick(f: File[]) {
+    const my = ++pickSeq;
     msg = ''; bmp?.close(); bmp = null; zoom = 1; panX = 0; panY = 0;
-    try { bmp = await loadBitmap(f[0]); name = f[0].name; } catch { msg = 'That file could not be read as an image.'; }
+    try { const b = await loadBitmap(f[0]); if (my === pickSeq) { bmp = b; name = f[0].name; } else b.close(); }
+    catch { if (my === pickSeq) msg = 'That file could not be read as an image.'; }
   }
   const preset = (r: string, pct: number) => { ratioId = r; radius = pct; zoom = 1; panX = 0; panY = 0; };
 

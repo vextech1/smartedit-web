@@ -27,26 +27,34 @@
 
   function pick(f: File[]) { files = f; blocks = []; status = ''; pct = 0; }
 
+  // Set when the tool is closed mid-run: the loop stops and the engine is shut down instead of working on for nobody.
+  let cancelled = false;
+  let engine: Awaited<ReturnType<typeof createOcr>> | null = null;
+  onMount(() => () => { cancelled = true; void engine?.stop(); });
+
   async function run() {
     busy = true; blocks = []; pct = 0;
     status = langIsNew ? 'Downloading language data for the first time (around 10 MB)…' : 'Starting the text engine…';
     let ocr: Awaited<ReturnType<typeof createOcr>> | null = null;
     try {
-      ocr = await createOcr(lang, (p, s) => { if (s.includes('recogniz')) pct = Math.round(p * 100); else status = s.charAt(0).toUpperCase() + s.slice(1) + '…'; });
+      ocr = engine = await createOcr(lang, (p, s) => { if (s.includes('recogniz')) pct = Math.round(p * 100); else status = s.charAt(0).toUpperCase() + s.slice(1) + '…'; });
+      if (cancelled) return;   // closed while the engine was starting; `finally` shuts it down
       markLangCached(lang);
-      for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < files.length && !cancelled; i++) {
         const f = files[i]; const pages: string[] = [];
         try {
           if (f.type === 'application/pdf') {
             const doc = await openPdf(await readBytes(f));
-            const n = Math.min(doc.numPages, MAX_PDF_PAGES);
-            for (let p = 1; p <= n; p++) {
-              status = `${f.name}: page ${p} of ${n}…`;
-              const c = await renderPage(doc, p, { scale: 2.5 });
-              pages.push(await ocr.read(c)); c.width = c.height = 0;
-            }
-            const more = doc.numPages > n; closePdf(doc);
-            blocks.push({ name: f.name, text: joinPages(pages) + (more ? `\n\n(Only the first ${n} pages were read.)` : '') });
+            try {
+              const n = Math.min(doc.numPages, MAX_PDF_PAGES);
+              for (let p = 1; p <= n && !cancelled; p++) {
+                status = `${f.name}: page ${p} of ${n}…`;
+                const c = await renderPage(doc, p, { scale: 2.5 });
+                try { pages.push(await ocr.read(c)); } finally { c.width = c.height = 0; }
+              }
+              const more = doc.numPages > n;
+              blocks.push({ name: f.name, text: joinPages(pages) + (more ? `\n\n(Only the first ${n} pages were read.)` : '') });
+            } finally { closePdf(doc); }
           } else {
             status = `Reading ${f.name}…`;
             const bmp = await loadBitmap(f);

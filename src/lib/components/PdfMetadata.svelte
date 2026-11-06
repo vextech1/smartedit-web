@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -16,6 +17,7 @@
   const when = (d?: Date) => (d ? d.toLocaleString() : 'not set');
 
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the result file when the tool is closed
   async function load(files: File[]) {
     clear(); file = files[0]; info = null; clearAll = false;
     try { bytes = await readBytes(file); info = await readMeta(bytes); f = { title: info.title, author: info.author, subject: info.subject, keywords: info.keywords, creator: info.creator, producer: info.producer }; }

@@ -77,7 +77,7 @@ describe('sessions', () => {
   });
   it('recovers from a full browser by compacting once and retrying', async () => {
     const base = new MemorySessionStore(); let fail = true;
-    const store: SessionStore = { metas: () => base.metas(), putMeta: (m) => base.putMeta(m), removeMeta: (i) => base.removeMeta(i), getBlob: (k) => base.getBlob(k), removeBlobs: (k) => base.removeBlobs(k),
+    const store: SessionStore = { metas: () => base.metas(), putMeta: (m) => base.putMeta(m), removeMeta: (i) => base.removeMeta(i), getBlob: (k) => base.getBlob(k), hasBlob: (k) => base.hasBlob(k), blobKeys: () => base.blobKeys(), removeBlobs: (k) => base.removeBlobs(k),
       putBlob: async (k, d) => { if (fail && k.endsWith('/id4')) { fail = false; throw Object.assign(new Error('full'), { name: 'QuotaExceededError' }); } return base.putBlob(k, d); } };
     let n = 0; const s = new Sessions(store, () => 1, () => `id${++n}`);
     const m = await s.start('pdf', pdf('A'), 'r.pdf'); await s.commit(m.id, pdf('B'), 'b');   // ids: Original id1, session id2, version id3
@@ -86,7 +86,7 @@ describe('sessions', () => {
   });
   it('does not lose the redo branch when saving the new version fails', async () => {
     const base = new MemorySessionStore();
-    const store: SessionStore = { metas: () => base.metas(), putMeta: (m) => base.putMeta(m), removeMeta: (i) => base.removeMeta(i), getBlob: (k) => base.getBlob(k), removeBlobs: (k) => base.removeBlobs(k),
+    const store: SessionStore = { metas: () => base.metas(), putMeta: (m) => base.putMeta(m), removeMeta: (i) => base.removeMeta(i), getBlob: (k) => base.getBlob(k), hasBlob: (k) => base.hasBlob(k), blobKeys: () => base.blobKeys(), removeBlobs: (k) => base.removeBlobs(k),
       putBlob: async (k, d) => { if (k.endsWith('/boom')) throw new Error('disk'); return base.putBlob(k, d); } };
     let n = 0; const ids = ['s', 'o', 'b', 'boom']; const s = new Sessions(store, () => 1, () => ids[n++] ?? `x${n}`);
     const m = await s.start('pdf', pdf('A'), 'r.pdf'); await s.commit(m.id, pdf('B'), 'b'); await s.undo(m.id);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -30,6 +31,7 @@
   let bytes: Uint8Array | null = null;
 
   function clear() { if (out) URL.revokeObjectURL(out.url); out = null; status = ''; bad = false; }
+  onMount(() => () => clear());   // free the result file when the tool is closed
   function usePreset() { const p = PRESETS[preset]; if (p) { header = { ...p.header }; footer = { ...p.footer }; } }
   const custom = () => { preset = 'custom'; };
   async function load(files: File[]) {

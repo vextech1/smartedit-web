@@ -35,11 +35,13 @@ export async function createOcr(lang: string, onProgress: (p: number, status: st
     if (offline) throw new Error(`You're offline. The language data hasn't been downloaded yet. Connect and try again.`);
     throw new Error(e instanceof Error ? `Text engine failed to start: ${e.message}` : 'The text engine could not start. Try reloading the page.');
   }
+  let ended: Promise<unknown> | undefined;
   return {
     async read(image: HTMLCanvasElement | Blob): Promise<string> {
       try { return (await worker.recognize(image)).data.text; }
       catch (e) { throw new Error(e instanceof Error ? `Recognition failed: ${e.message}` : 'Could not read text from this image.'); }
     },
-    stop: () => worker.terminate()
+    /** Shut the worker down. Safe to call more than once (the tool calls it when a run ends and again if it is closed mid-run). */
+    stop: () => (ended ??= worker.terminate())
   };
 }

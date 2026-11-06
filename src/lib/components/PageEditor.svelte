@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import FileDrop from './FileDrop.svelte';
   import ResultRow from './ResultRow.svelte';
   import { baseName } from '#lib/core/format.ts';
@@ -18,19 +19,22 @@
   function clearResult() { if (result) URL.revokeObjectURL(result.url); result = null; }
   function release() { pages.forEach((p) => p.thumb && URL.revokeObjectURL(p.thumb)); pages = []; clearResult(); }
 
+  onMount(() => () => { token++; release(); });   // free the thumbnails and result when the tool is closed; stops a render still in flight
   async function load(files: File[]) {
     const my = ++token; release(); status = 'Opening…'; bad = false; file = files[0];
     try {
       bytes = await readBytes(file);
       const doc = await openPdf(bytes);
-      pages = Array.from({ length: doc.numPages }, (_, i) => ({ index: i, rotate: 0, sel: false, thumb: '' }));
-      for (let i = 0; i < doc.numPages && my === token; i++) {
-        status = `Preparing pages… ${i + 1} of ${doc.numPages}`;
-        const blob = await toBlob(await renderPage(doc, i + 1, { maxSide: 360 }), 'image/jpeg', 0.7);
-        const p = pages.find((x) => x.index === i);
-        if (blob && p) p.thumb = URL.createObjectURL(blob);
-      }
-      closePdf(doc);
+      try {
+        pages = Array.from({ length: doc.numPages }, (_, i) => ({ index: i, rotate: 0, sel: false, thumb: '' }));
+        for (let i = 0; i < doc.numPages && my === token; i++) {
+          status = `Preparing pages… ${i + 1} of ${doc.numPages}`;
+          const blob = await toBlob(await renderPage(doc, i + 1, { maxSide: 360 }), 'image/jpeg', 0.7);
+          if (my !== token) break;   // a newer file replaced this one while the page rendered: its pages are not ours to touch
+          const p = pages.find((x) => x.index === i);
+          if (blob && p) { if (p.thumb) URL.revokeObjectURL(p.thumb); p.thumb = URL.createObjectURL(blob); }
+        }
+      } finally { closePdf(doc); }
       if (my === token) status = '';
     } catch (e) { if (my === token) { pages = []; bad = true; status = pdfErrorMessage(e, file.name); } }
   }
