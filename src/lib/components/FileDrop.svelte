@@ -6,8 +6,9 @@
   import { getStudio } from '#lib/workspace.svelte.ts';
   import LibraryPicker from './LibraryPicker.svelte';
   // `fromSession` is false for secondary pickers (a logo, say) that must not receive the working file.
-  let { accept, multiple = true, label, hint = 'Nothing is uploaded.', onfiles, fromSession = true }:
-    { accept: string; multiple?: boolean; label: string; hint?: string; onfiles: (files: File[]) => void; fromSession?: boolean } = $props();
+  // `onskipped` hands over the files turned away, so the caller can explain in its own words; FileDrop then shows no message of its own.
+  let { accept, multiple = true, label, hint = 'Nothing is uploaded.', onfiles, fromSession = true, onskipped }:
+    { accept: string; multiple?: boolean; label: string; hint?: string; onfiles: (files: File[]) => void; fromSession?: boolean; onskipped?: (files: File[]) => void } = $props();
   const studio = getStudio();
   const uid = $props.id();   // unique per drop zone, so two on one page never share an id
   let over = $state(false);
@@ -20,7 +21,8 @@
   async function take(list: FileList | null) {
     // Copy the list now: the input is cleared right after this call, and a dropped list is only valid during the event.
     const { files, skipped } = await screenFiles(Array.from(list ?? []), accept);
-    notice = skippedMessage(skipped);
+    if (onskipped && skipped.length) onskipped(skipped);
+    notice = onskipped ? '' : skippedMessage(skipped);
     if (files.length) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }
   }
   function fromLibrary(files: File[]) { expired = false; onfiles(multiple ? files : files.slice(0, 1)); }

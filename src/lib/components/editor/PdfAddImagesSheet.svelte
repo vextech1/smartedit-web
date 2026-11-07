@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import ToolSheet from './ToolSheet.svelte';
   import FileDrop from '../FileDrop.svelte';
   import { appendImages, type PageSize } from '#lib/core/pdf.ts';
@@ -10,8 +10,9 @@
 
   // Put pictures on new pages after the last page of this PDF. The tick saves the result as the next version.
   interface Item { id: number; file: File; thumb: string }
-  let { source, name, pages, oncommit, oncancel }:
-    { source: Uint8Array; name: string; pages: number; oncommit: (bytes: Uint8Array) => Promise<void>; oncancel: () => void } = $props();
+  // `extras` are pictures that arrived with the sheet (dropped on the editor, say) and start in the list.
+  let { source, name, pages, extras = [], oncommit, oncancel }:
+    { source: Uint8Array; name: string; pages: number; extras?: File[]; oncommit: (bytes: Uint8Array) => Promise<void>; oncancel: () => void } = $props();
   let seq = 0;
   let items = $state<Item[]>([]);
   let size = $state<PageSize>('a4');
@@ -21,6 +22,7 @@
   const free = (list: Item[]) => list.forEach((i) => URL.revokeObjectURL(i.thumb));
   onDestroy(() => free(items));
   function add(files: File[]) { bad = false; status = ''; items.push(...files.map((file) => ({ id: seq++, file, thumb: URL.createObjectURL(file) }))); }
+  onMount(() => { if (extras.length) add(extras); });
   function remove(id: number) { const gone = items.find((i) => i.id === id); if (gone) free([gone]); items = items.filter((i) => i.id !== id); }
   function reset() { free(items); items = []; size = 'a4'; margin = 24; status = ''; bad = false; }
   async function apply() {

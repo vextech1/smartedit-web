@@ -31,7 +31,9 @@
   import PdfToTextSheet from './PdfToTextSheet.svelte';
 
   type Sheet = PdfSheetId;
-  let { onclose, onremove, oncopy, saved }: { onclose: () => void; onremove: () => void; oncopy: () => void; saved: 'idle' | 'ok' | 'failed' } = $props();
+  // `incoming` is what the studio hands in (files dropped on the editor, say): Merge or Add images opens already filled in, and a message becomes a toast.
+  let { onclose, onremove, oncopy, saved, incoming = $bindable(null) }:
+    { onclose: () => void; onremove: () => void; oncopy: () => void; saved: 'idle' | 'ok' | 'failed'; incoming?: { sheet?: 'merge' | 'addimages'; files?: File[]; message?: string } | null } = $props();
   const st = getStudio()!;
   const EMPTY_META: PdfMeta = { title: '', author: '', subject: '', keywords: '', creator: '', producer: '' };
 
@@ -63,6 +65,7 @@
   let stageW = $state(0); let stageH = $state(0);
   let token = 0;
   let mergeExtras = $state<File[]>([]);   // PDFs picked together with this one, waiting to be merged
+  let imageExtras = $state<File[]>([]);   // pictures waiting to be added as pages
   let lastTab = '';
 
   const sourcePage = $derived(pages[current]?.index ?? 0);
@@ -142,6 +145,17 @@
     untrack(() => { if (tab !== lastTab) { lastTab = tab; const wanted = PDF_TAB_SHEET[tab]; if (wanted) choose(wanted); } });
   });
   $effect(() => { if (sheet !== 'merge') mergeExtras = []; });
+  $effect(() => { if (sheet !== 'addimages') imageExtras = []; });
+  $effect(() => {
+    const inc = incoming;
+    if (!inc || !source) return;
+    untrack(() => {
+      incoming = null;
+      if (inc.sheet === 'merge') { mergeExtras = inc.files ?? []; choose('merge'); }
+      else if (inc.sheet === 'addimages') { imageExtras = inc.files ?? []; choose('addimages'); }
+      if (inc.message) { status = inc.message; bad = true; }   // after choose(), which clears any old message
+    });
+  });
   onMount(() => () => { token++; if (downloadUrl) URL.revokeObjectURL(downloadUrl); });
 
   /** The dock: a group opens its sheet (or its only tool), All tools opens the list. */
@@ -249,7 +263,7 @@
   {:else if sheet === 'split' && source}
     <PdfSplitSheet {source} name={currentName()} pages={pageTotal} oncancel={() => (sheet = null)} />
   {:else if sheet === 'addimages' && source}
-    <PdfAddImagesSheet {source} name={currentName()} pages={pageTotal} oncommit={(bytes) => commitPdf(bytes, 'Add images', 'images')} oncancel={() => (sheet = null)} />
+    <PdfAddImagesSheet {source} name={currentName()} pages={pageTotal} extras={imageExtras} oncommit={(bytes) => commitPdf(bytes, 'Add images', 'images')} oncancel={() => (sheet = null)} />
   {:else if sheet === 'scan' && source}
     <PdfScanSheet {source} pages={pageTotal} oncommit={(bytes) => commitPdf(bytes, 'Scan', 'scan')} oncancel={() => (sheet = null)} />
   {:else if sheet === 'docx' && source}

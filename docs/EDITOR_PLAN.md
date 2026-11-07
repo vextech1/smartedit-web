@@ -49,6 +49,14 @@
 - **Read text (OCR)** shows progress and a Cancel button inside the sheet (`core/ocr-run.ts`, with an `AbortSignal`). Cancel keeps the pages already read; closing the sheet stops the engine. It reads up to 20 pages.
 - **File rules:** Scan and Read text now count as supported for an open PDF (`ALSO` in `core/workspaces.ts`), so they are no longer greyed out there.
 
+## Entry points (Phase 4, done)
+- **One start screen** for both studios: `StudioStart.svelte` (choose a file, Continue where you left off, "No file yet?" where a tool allows it). `Studio.svelte` owns the state and decides what happens to the files; `core/intake.ts` holds the pure parts (sorting files, the choices, the wording), so they are unit-tested.
+- **Pictures in Document Studio ask first.** A sheet (`GroupSheet` tiles over a scrim, a centred card on desktop) offers **Make a PDF** (one page per picture; opens the builder with the pictures already in it), **Read text**, **Edit picture** (Image Studio; one picture at a time, so it is off for several, with the reason) and, only when a PDF is open, **Add to open PDF** (opens Add images with the pictures already in the list). With a PDF open the first tile is **Make a new PDF**; the open PDF stays saved in Continue.
+- **Pictures reach an open PDF by dropping them on the editor** (desktop). A drop zone inside a sheet still handles its own drops. PDFs dropped on the editor open Merge with them.
+- **Files a studio cannot open** get a short message that names the studio, what it opens and what was skipped. Document Studio adds that Word and text files can be made but not opened. A PDF chosen in Image Studio also gets a button that sends it to Document Studio. `FileDrop` has an `onskipped` hook for this; without it, it shows its generic message as before.
+- **Mixed selections** (PDFs together with pictures) explain themselves and do nothing; PDFs together are merged, pictures together are offered the choices.
+- **Starting new work in place of an open file** (Make a new PDF, Read text from the open PDF's screen) asks first only if the open file holds changes that were never saved.
+
 ## Decision: no accounts, anywhere
 There are no accounts, sign-in or cloud storage, in the web app **and in the Android app**. Everything stays on the device. So there is no account-deletion page (`delete-account` was removed on purpose), and sync, if ever wanted, would be an export and import of files, not a login.
 
