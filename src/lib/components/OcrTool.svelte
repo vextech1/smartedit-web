@@ -3,17 +3,12 @@
   import FileDrop from './FileDrop.svelte';
   import { baseName } from '#lib/core/format.ts';
   import { draw, loadBitmap } from '#lib/core/image.ts';
-  import { joinPages, createOcr, OCR_LANGS } from '#lib/core/ocr.ts';
+  import { joinPages, createOcr, getCachedLangs, markLangCached, OCR_LANGS } from '#lib/core/ocr.ts';
   import { closePdf, openPdf, renderPage } from '#lib/core/pdf-render.ts';
   import { pdfErrorMessage, readBytes } from '#lib/core/files.ts';
   import { getOcrLang } from '#lib/core/settings.ts';
 
   const MAX_PDF_PAGES = 20;
-  // Keys of languages whose data has already been cached by the service worker on this device.
-  const CACHE_KEY = 'smartedit.ocrCachedLangs';
-  function getCachedLangs(): Set<string> { try { return new Set(JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]')); } catch { return new Set(); } }
-  function markLangCached(code: string) { try { const s = getCachedLangs(); s.add(code); localStorage.setItem(CACHE_KEY, JSON.stringify([...s])); } catch { /* ignore */ } }
-
   interface B { name: string; text: string; bad?: boolean }
   let files = $state<File[]>([]);
   let lang = $state('eng');

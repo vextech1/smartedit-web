@@ -15,7 +15,7 @@
   import { fmtBytes } from '#lib/core/format.ts';
   import { activeWork, workUsage, UNSAVED_WARNING } from '#lib/active.svelte.ts';
   import { fileKind, studioHref, tabInput, toolSupports, workspaceSupports, unsupportedNote, type Workspace, type WorkspaceId } from '#lib/core/workspaces.ts';
-  import { PDF_DOCK } from '#lib/core/pdf-studio.ts';
+  import { PDF_TOOLS } from '#lib/core/pdf-studio.ts';
 
   let { workspace }: { workspace: Workspace } = $props();
   // The page re-creates this component for another studio, so the first value is the right one.
@@ -41,7 +41,7 @@
   const kind = $derived(st.file ? fileKind(st.file.type) : undefined);
   // Image Studio with an image open uses the full-screen editor instead of the tab bar.
   const editor = $derived(ws.id === 'image' && kind === 'image');
-  const pdfEditor = $derived(ws.id === 'document' && kind === 'pdf' && PDF_DOCK.some((item) => item.tool === active));
+  const pdfEditor = $derived(ws.id === 'document' && kind === 'pdf' && PDF_TOOLS.some((item) => item.open === 'sheet' && item.slug === active));
   const showTool = $derived(!!st.file || (standalone && !!ws.startsEmpty?.includes(active)));
   const left = $derived(st.session ? daysLeft(st.session, retention) : undefined);
   const accepts = (k: Parameters<typeof workspaceSupports>[1]) => workspaceSupports(ws, k);

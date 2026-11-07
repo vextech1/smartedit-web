@@ -36,23 +36,27 @@ export function splitPartName(base: string, group: readonly number[]): string {
   const first = group[0] + 1, last = group[group.length - 1] + 1;
   return `${base}-${group.length === 1 ? `page-${first}` : `pages-${first}-${last}`}.pdf`;
 }
-/** The sheets of the PDF editor. Merge, Split, Add images, To images and Pictures run themselves; the rest use the tick. */
-export type PdfSheetId = 'pages' | 'merge' | 'split' | 'addimages' | 'crop' | 'stamp' | 'watermark' | 'info' | 'compress' | 'toimages' | 'extract';
-export interface PdfDockItem { id: PdfSheetId; label: string; icon: string; /** The tool (and Document Studio tab) this button is. */ tool: string }
-/** The editor's bottom row, in order: one button for every PDF tool. */
-export const PDF_DOCK: readonly PdfDockItem[] = [
-  { id: 'pages', label: 'Pages', icon: 'tools', tool: 'organize-pdf' },
-  { id: 'merge', label: 'Merge', icon: 'merge', tool: 'merge-pdf' },
-  { id: 'split', label: 'Split', icon: 'split', tool: 'split-pdf' },
-  { id: 'addimages', label: 'Add images', icon: 'addimage', tool: 'images-to-pdf' },
-  { id: 'crop', label: 'Crop', icon: 'crop', tool: 'crop-pdf' },
-  { id: 'stamp', label: 'Stamp', icon: 'draw', tool: 'page-numbers' },
-  { id: 'watermark', label: 'Watermark', icon: 'watermark', tool: 'watermark-pdf' },
-  { id: 'info', label: 'Info', icon: 'more', tool: 'pdf-metadata' },
-  { id: 'compress', label: 'Compress', icon: 'export', tool: 'compress-pdf' },
-  { id: 'toimages', label: 'To images', icon: 'pageimage', tool: 'pdf-to-images' },
-  { id: 'extract', label: 'Pictures', icon: 'extract', tool: 'extract-images' }
+import type { StudioTool } from './studio-tools.ts';
+/** The sheets of the PDF editor. Merge, Split, Add images, Scan, To images, Pictures, To Word, To text and Read text run themselves; the rest use the tick. */
+export type PdfSheetId = 'pages' | 'merge' | 'split' | 'addimages' | 'scan' | 'crop' | 'stamp' | 'watermark' | 'info' | 'compress' | 'toimages' | 'extract' | 'docx' | 'text' | 'ocr';
+/** Every tool the Document Studio offers, in the order of its tiles. Each one is a sheet of the PDF editor, which stays on screen for all of them. */
+export const PDF_TOOLS: readonly StudioTool[] = [
+  { id: 'pages', label: 'Pages', icon: 'tools', open: 'sheet', slug: 'organize-pdf' },
+  { id: 'merge', label: 'Merge', icon: 'merge', open: 'sheet', slug: 'merge-pdf' },
+  { id: 'split', label: 'Split', icon: 'split', open: 'sheet', slug: 'split-pdf' },
+  { id: 'addimages', label: 'Add images', icon: 'addimage', open: 'sheet', slug: 'images-to-pdf' },
+  { id: 'crop', label: 'Crop', icon: 'crop', open: 'sheet', slug: 'crop-pdf' },
+  { id: 'stamp', label: 'Stamp', icon: 'draw', open: 'sheet', slug: 'page-numbers' },
+  { id: 'watermark', label: 'Watermark', icon: 'watermark', open: 'sheet', slug: 'watermark-pdf' },
+  { id: 'info', label: 'Info', icon: 'more', open: 'sheet', slug: 'pdf-metadata' },
+  { id: 'compress', label: 'Compress', icon: 'compress', open: 'sheet', slug: 'compress-pdf' },
+  { id: 'toimages', label: 'To images', icon: 'pageimage', open: 'sheet', slug: 'pdf-to-images' },
+  { id: 'extract', label: 'Pictures', icon: 'extract', open: 'sheet', slug: 'extract-images' },
+  { id: 'docx', label: 'To Word', icon: 'convert', open: 'sheet', slug: 'pdf-to-docx' },
+  { id: 'text', label: 'To text', icon: 'text', open: 'sheet', slug: 'pdf-to-text' },
+  { id: 'ocr', label: 'Read text', icon: 'search', open: 'sheet', slug: 'extract-text', blurb: 'Read text from photos and scans.' },
+  { id: 'scan', label: 'Scan', icon: 'scan', open: 'sheet', slug: 'scan-document', blurb: 'Scan pages with the camera and add them.' }
 ];
 /** The sheet each PDF tab opens in the Document Studio editor. `organize-pdf` is the editor's own home view, so it opens nothing. */
 export const PDF_TAB_SHEET: Readonly<Record<string, PdfSheetId>> =
-  Object.fromEntries(PDF_DOCK.filter((d) => d.tool !== 'organize-pdf').map((d) => [d.tool, d.id]));
+  Object.fromEntries(PDF_TOOLS.filter((d) => d.open === 'sheet' && d.slug !== 'organize-pdf').map((d) => [d.slug!, d.id as PdfSheetId]));

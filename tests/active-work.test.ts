@@ -19,7 +19,11 @@ describe('which tools suit which file', () => {
     expect(toolSupports('compress-pdf', 'pdf')).toBe(true);
     expect(toolSupports('edit-image', 'pdf')).toBe(false);
     expect(toolSupports('pdf-to-docx', 'pdf')).toBe(true);
-    expect(toolSupports('extract-text', 'pdf')).toBe(false);
+    expect(toolSupports('extract-text', 'pdf')).toBe(true);    // reads the open PDF's pages
+    expect(toolSupports('scan-document', 'pdf')).toBe(true);   // adds the scanned pages to the open PDF
+    expect(toolSupports('extract-text', 'image')).toBe(true);
+    expect(toolSupports('scan-document', 'image')).toBe(true);
+    expect(toolSupports('crop-pdf', 'image')).toBe(false);
     expect(toolSupports('images-to-pdf', 'image')).toBe(true);
     expect(toolSupports('images-to-pdf', 'pdf')).toBe(true);   // adds the pictures to an open PDF
     expect(toolSupports('organize-pdf', 'image')).toBe(false);

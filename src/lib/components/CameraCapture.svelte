@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FullScreen from './editor/FullScreen.svelte';
   let { onshot, onclose }: { onshot: (c: HTMLCanvasElement) => void; onclose: () => void } = $props();
   let video: HTMLVideoElement;
   let error = $state(''); let ready = $state(false);
@@ -27,12 +28,23 @@
   }
 </script>
 
-<div class="cam">
-  {#if error}<p class="warn">{error}</p>{/if}
+<!-- The camera fills the screen. What you see is the whole frame that Capture keeps. -->
+<FullScreen title="Scan" dark {onclose}>
+  {#if error}<p class="msg">{error}</p>{/if}
   <!-- svelte-ignore a11y_media_has_caption -->
   <video bind:this={video} playsinline muted class:hide={!ready}></video>
-  <div class="bar">
-    <button class="btn" type="button" disabled={!ready} onclick={shoot}>Capture</button>
-    <button class="btn small ghost" type="button" onclick={onclose}>Close camera</button>
-  </div>
-</div>
+  {#snippet footer()}
+    <button class="shutter" type="button" aria-label="Capture" disabled={!ready} onclick={shoot}><span></span></button>
+    <button class="close" type="button" onclick={onclose}>Close camera</button>
+  {/snippet}
+</FullScreen>
+
+<style>
+  video { flex: 1; min-height: 0; width: 100%; max-width: none; object-fit: contain; border-radius: 0; background: #000; }
+  video.hide { display: none; }
+  .msg { color: #ffd24a; text-align: center; margin: 24px 8px; }
+  .shutter { width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff; background: none; padding: 5px; cursor: pointer; }
+  .shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; }
+  .shutter:disabled { opacity: .4; cursor: default; }
+  .close { font: inherit; color: #fff; background: none; border: 1px solid #ffffff66; border-radius: 999px; padding: 10px 18px; min-height: 44px; cursor: pointer; }
+</style>

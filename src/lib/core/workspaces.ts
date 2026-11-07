@@ -54,8 +54,8 @@ const INPUT: Record<string, FileKind> = {
 /** The kind of working file a tab takes as input. */
 export const tabInput = (slug: string): FileKind => INPUT[slug] ?? (workspaceFor(slug)?.id === 'image' ? 'image' : 'pdf');
 
-// Tools that also work on a second kind of file. Images to PDF adds its pictures to an open PDF as new pages.
-const ALSO: Record<string, FileKind> = { 'images-to-pdf': 'pdf' };
+// Tools that also work on a second kind of file. Images to PDF and Scan add their pictures to an open PDF as new pages; Extract text reads an open PDF's pages.
+const ALSO: Record<string, FileKind> = { 'images-to-pdf': 'pdf', 'scan-document': 'pdf', 'extract-text': 'pdf' };
 /** Whether a tool can take a file of this kind. With no file open, every tool is available. */
 export const toolSupports = (slug: string, kind: FileKind | undefined): boolean => !kind || tabInput(slug) === kind || ALSO[slug] === kind;
 /** Whether any tool in a studio can take a file of this kind. */

@@ -6,7 +6,7 @@ import { blocksToText, blockToText, mdEscape, pdfToText } from '../src/lib/core/
 import type { PdfDocLike } from '../src/lib/core/pdf-docx';
 import type { ParagraphBlock } from '../src/lib/core/docx-writer';
 import { toolBySlug } from '../src/lib/tools';
-import { initialPages, movePage, pageIndex, PDF_DOCK, PDF_TAB_SHEET, removePage, rotatePage } from '../src/lib/core/pdf-studio';
+import { initialPages, movePage, pageIndex, PDF_TOOLS, PDF_TAB_SHEET, removePage, rotatePage } from '../src/lib/core/pdf-studio';
 import { tools } from '../src/lib/tools';
 import { workspaceById } from '../src/lib/core/workspaces';
 
@@ -271,15 +271,23 @@ describe('registry', () => {
   });
 });
 
-describe('PDF editor dock', () => {
-  it('has one button for every PDF tool, in the same order as the Document Studio PDF tabs', () => {
+describe('PDF editor tools', () => {
+  const sheets = PDF_TOOLS.filter((d) => d.open === 'sheet');
+  it('is a sheet for every Document Studio tab, so the editor never falls back to the tab bar', () => {
+    expect(PDF_TOOLS.every((d) => d.open === 'sheet')).toBe(true);
+    expect(sheets.map((d) => d.slug).sort()).toEqual([...workspaceById('document')!.tabs].sort());
+    expect(new Set(PDF_TOOLS.map((d) => d.id)).size).toBe(PDF_TOOLS.length);
+  });
+  it('keeps the PDF tools in the same order as the Document Studio PDF tabs', () => {
     const pdfTools = tools.filter((t) => t.category === 'PDF').map((t) => t.slug);
-    expect(PDF_DOCK.map((d) => d.tool).sort()).toEqual([...pdfTools].sort());
-    expect(PDF_DOCK.map((d) => d.tool)).toEqual(workspaceById('document')!.tabs.filter((slug) => pdfTools.includes(slug)));
-    expect(new Set(PDF_DOCK.map((d) => d.id)).size).toBe(PDF_DOCK.length);
+    expect(sheets.filter((d) => pdfTools.includes(d.slug!)).map((d) => d.slug)).toEqual(workspaceById('document')!.tabs.filter((slug) => pdfTools.includes(slug)));
   });
   it('opens the matching sheet for every tab except Organize, which is the editor\'s home view', () => {
-    for (const d of PDF_DOCK) expect(PDF_TAB_SHEET[d.tool]).toBe(d.tool === 'organize-pdf' ? undefined : d.id);
+    for (const d of sheets) expect(PDF_TAB_SHEET[d.slug!]).toBe(d.slug === 'organize-pdf' ? undefined : d.id);
+    for (const id of ['scan', 'ocr', 'docx', 'text']) expect(PDF_TOOLS.find((d) => d.id === id)).toBeTruthy();
+  });
+  it('names the four conversions Scan, Read text, To Word and To text', () => {
+    expect(['scan', 'ocr', 'docx', 'text'].map((id) => PDF_TOOLS.find((d) => d.id === id)!.label)).toEqual(['Scan', 'Read text', 'To Word', 'To text']);
   });
 });
 

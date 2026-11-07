@@ -9,6 +9,11 @@ export const OCR_LANGS: { code: string; label: string }[] = [
   { code: 'chi_tra', label: 'Chinese (Traditional)' }, { code: 'jpn', label: 'Japanese' }, { code: 'kor', label: 'Korean' }
 ];
 
+// Keys of languages whose data this device has already downloaded (the service worker keeps them), so the first use can warn about the download.
+const CACHE_KEY = 'smartedit.ocrCachedLangs';
+export function getCachedLangs(): Set<string> { try { return new Set(JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]')); } catch { return new Set(); } }
+export function markLangCached(code: string) { try { const s = getCachedLangs(); s.add(code); localStorage.setItem(CACHE_KEY, JSON.stringify([...s])); } catch { /* ignore */ } }
+
 /** Join per-page text with a visible page break, trimming blank pages. */
 export function joinPages(pages: string[]): string {
   const clean = pages.map((p) => p.trim());

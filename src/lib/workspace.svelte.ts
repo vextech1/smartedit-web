@@ -7,7 +7,7 @@ import { getLibrary, keepStorage } from '#lib/core/library.ts';
 import { setPending } from '#lib/core/handoff.ts';
 import { activeWork, workUsage } from '#lib/active.svelte.ts';
 import { fileKind, studioHref, tabInput, workspaceById, workspaceFor, type FileKind, type WorkspaceId } from '#lib/core/workspaces.ts';
-import { STUDIO_CROSSINGS } from '#lib/core/crossings.ts';
+import { STUDIO_CROSSINGS, isCrossingTarget } from '#lib/core/crossings.ts';
 
 const KEY = Symbol('studio');
 export const FULL_NOTE = 'Unfinished work is using all 100 MB, so changes are not saved automatically. Download your work, or finish and delete older work to make room.';
@@ -173,4 +173,10 @@ export async function sendTo(studio: WorkspaceId, files: File[], tab: string) {
   activeWork.set(session);
   if (rest.length) setPending(rest);
   await goto(studioHref(studio, tab, session.id));
+}
+
+/** Open a tool of another studio from the All tools list: with the open file when a crossing carries it there, otherwise on the tool's own tab. */
+export async function openInStudio(studio: WorkspaceId, slug: string, file?: File) {
+  if (file && isCrossingTarget(studio, slug)) await sendTo(studio, [file], slug);
+  else await goto(studioHref(studio, slug));
 }
